@@ -1,0 +1,40 @@
+{
+  "selectedRoutineId": "rut-1",
+  "routines": [
+    {
+      "id": "rut-1",
+      "name": "Fuerza (~40 min)",
+      "warmup": "Círculos de brazos 30 seg, Círculo de cadera 30 seg, Saltos de tijera 30 seg, Elevación de talones 2x10",
+      "main": "Sentadillas 3x10, Puente de glúteos 3x10, Peso muerto rumano 3x10, Zancadas intercaladas 3x10, Flexiones de pared 3x10, Remo con mancuerna alternado 3x10, Press de hombros con mancuerna alternado 3x10, Plancha 3x20s",
+      "cooldown": "Estiramiento de cuádriceps c/ lado 10 seg, Estiramiento lateral c/ lado 10 seg, Estiramiento hacia arriba con elevación de talón 10 seg, Flexión de tronco hacia adelante 10 seg, Mariposa 10 seg"
+    },
+    {
+      "id": "rut-2",
+      "name": "Cardio Moderado (~25 min)",
+      "warmup": "Círculo de cadera 30 seg, Saltos de tijera 30 seg, Elevación de talones 2x10",
+      "main": "Caminata rápida 5 min, Trote suave 5x2 min (caminata suave 1 min), Caminata moderada 5 min",
+      "cooldown": "Estiramiento de cuádriceps c/ lado 10 seg, Estiramiento de pierna lateral c/ lado 10 seg, Estiramiento hacia arriba con elevación de talón 10 seg, Flexión de tronco hacia adelante 10 seg, Mariposa 10 seg"
+    },
+    {
+      "id": "rut-3",
+      "name": "Circuito bajo techo (~30 min)",
+      "warmup": "Círculo de cadera 30 seg, Saltos de tijera 30 seg, Elevación de talones 2x10, Marcha suave 30 seg",
+      "main": "Marcha con rodillas altas 3x50 seg, Step-up alternado 3x50 seg, Sentadillas 3x50 seg, Bicicleta estática 5 min",
+      "cooldown": "Estiramiento de cuádriceps c/ lado 10 seg, Estiramiento de pierna lateral c/ lado 10 seg, Estiramiento hacia arriba con elevación de talón 10 seg, Flexión de tronco hacia adelante 10 seg, Mariposa 10 seg"
+    },
+    {
+      "id": "rut-4",
+      "name": "HIIT bajo techo (~35 min)",
+      "warmup": "Círculo de cadera 30 seg, Saltos de tijera 30 seg, Elevación de talones 2x10, Marcha suave 30 seg",
+      "main": "Marcha con rodillas altas 5x30 seg, Sentadillas rápidas 5x30 seg, Salto en cuerda 5x30 seg, Escaladores 5x30 seg, Bicicleta estática 5 min",
+      "cooldown": "Estiramiento de cuádriceps c/ lado 10 seg, Estiramiento de pierna lateral c/ lado 10 seg, Estiramiento hacia arriba con elevación de talón 10 seg, Flexión de tronco hacia adelante 10 seg, Mariposa 10 seg"
+    },
+    {
+      "id": "rut-5",
+      "name": "Caminata + Trote libre (~1 h)",
+      "warmup": "Círculo de cadera 30 seg, Saltos de tijera 30 seg, Elevación de talones 2x10, Marcha suave 30 seg",
+      "main": "Caminata rápida con trote suave en intervalos",
+      "cooldown": "Estiramiento de cuádriceps c/ lado 10 seg, Estiramiento de pierna lateral c/ lado 10 seg, Estiramiento hacia arriba con elevación de talón 10 seg, Flexión de tronco hacia adelante 10 seg, Mariposa 10 seg"
+    }
+  ]
+}

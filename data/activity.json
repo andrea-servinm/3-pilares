@@ -1,0 +1,12 @@
+{
+  "onlyCurrentMonth": false,
+  "completedDaysAgo": [],
+  "completedDates": [
+    { "date": "2026-11-12", "routineId": "rut-5" },
+    { "date": "2026-11-13", "routineId": "rut-5" },
+    { "date": "2026-11-16", "routineId": "rut-5" },
+    { "date": "2026-11-17", "routineId": "rut-1" },
+    { "date": "2026-11-18", "routineId": "rut-1" },
+    { "date": "2026-11-20", "routineId": "rut-1" }
+  ]
+}

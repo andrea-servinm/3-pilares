@@ -1,0 +1,19 @@
+{
+  "records": [
+    {
+      "id": "hr-init-1",
+      "monthsAgo": 1,
+      "sex": "F",
+      "height": 0,
+      "weight": 0,
+      "waist": 0,
+      "hip": 0,
+      "imc": 0,
+      "icc": 0.0,
+      "ica": 0.0,
+      "riskLevel": "",
+      "riskBadgeClass": "bg-emerald-100 text-emerald-800",
+      "explanation": "Índice cintura-altura (ICA < 0.50) e índice cintura-cadera en rango saludable. IMC ligeramente por encima de 25."
+    }
+  ]
+}

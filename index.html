@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d9488" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="3-Pilares" />
+  <title>3-Pilares</title>
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="js/tailwind-config.js"></script>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body class="min-h-screen bg-slate-100 text-slate-900 font-sans antialiased overflow-x-hidden">
+
+  <!-- Contenedor principal adaptativo: móvil tipo PWA y escritorio amplio -->
+  <div
+    class="w-full max-w-md lg:max-w-6xl mx-auto min-h-screen bg-slate-50 lg:bg-transparent flex flex-col relative border-x border-slate-200/80 lg:border-0">
+
+    <!-- Header Superior Fijo / Adaptativo -->
+    <header
+      class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 lg:mt-4 lg:rounded-3xl lg:border px-4 lg:px-6 py-3.5 flex items-center justify-between gap-4 shadow-xs">
+      <div class="flex items-center gap-3">
+        <div
+          class="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-600 to-water-600 flex items-center justify-center text-white shadow-sm shrink-0">
+          <!-- Icono Pulso / Agua -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 3.75c-3.75 4.5-6 7.5-6 10.5a6 6 0 1 0 12 0c0-3-2.25-6-6-10.5Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.5 14.5l1.75 1.75L14.75 12" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base lg:text-lg font-bold text-slate-900 leading-tight">3-Pilares <span id="appVersionBadge"
+              class="ml-1 align-middle text-[10px] font-semibold text-slate-400"></span></h1>
+          <p id="headerDateLabel" class="text-xs text-slate-500 font-medium capitalize">Cargando fecha...</p>
+        </div>
+      </div>
+
+      <!-- Navegación de Pestañas en Escritorio (lg:flex) -->
+      <nav aria-label="Navegación principal"
+        class="hidden lg:flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/70">
+        <button type="button" data-tab="resumen"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold text-brand-700 bg-white shadow-xs transition">
+          Resumen
+        </button>
+        <button type="button" data-tab="salud"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+          Salud
+        </button>
+        <button type="button" data-tab="actividad"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+          Actividad
+        </button>
+        <button type="button" data-tab="finanzas"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+          Finanzas
+        </button>
+      </nav>
+
+      <!-- Botón Notificaciones / .ICS -->
+      <button id="openNotificationsBtn" type="button"
+        class="relative flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-brand-50 hover:bg-brand-100 active:scale-95 text-brand-700 font-semibold text-xs transition border border-brand-200/70 shrink-0">
+        <svg class="w-4 h-4 text-brand-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+        </svg>
+        <span>Avisos</span>
+        <span id="notifStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+      </button>
+    </header>
+
+    <!-- Toast de Notificación Interna (Reemplazo elegante de alert) -->
+    <div id="toastBanner"
+      class="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-sm pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2">
+      <div id="toastContent"
+        class="bg-slate-900 text-white text-xs font-medium px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2.5">
+        <span id="toastIcon" class="text-brand-400 font-bold">✓</span>
+        <span id="toastText">Acción completada</span>
+      </div>
+    </div>
+
+    <!-- Área Principal de Contenido -->
+    <main class="flex-1 px-4 lg:px-0 pt-4 lg:pt-6 pb-28 lg:pb-12 space-y-4 lg:space-y-6">
+
+      <!-- ========================================================= -->
+      <!-- PESTAÑA 1: RESUMEN                                        -->
+      <!-- ========================================================= -->
+      <section id="tab-resumen" class="tab-content space-y-4 lg:space-y-6">
+
+        <!-- Tarjeta Bienvenida / Estado General del Día -->
+        <div
+          class="bg-gradient-to-br from-brand-700 via-brand-600 to-water-600 rounded-3xl p-5 lg:p-6 text-white shadow-md">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <span
+                class="inline-block px-2.5 py-0.5 rounded-full bg-white/20 text-[11px] font-semibold tracking-wide uppercase">Panel
+                del Día</span>
+              <h2 class="text-xl lg:text-2xl font-bold mt-1.5">Tu progreso de hoy</h2>
+              <p id="summaryMotivation" class="text-xs lg:text-sm text-brand-50/90 mt-0.5">Mantén el ritmo constante
+                paso a paso.</p>
+            </div>
+            <div class="flex sm:block items-baseline justify-between sm:text-right">
+              <div id="summaryScoreBadge" class="text-2xl lg:text-3xl font-extrabold">0%</div>
+              <div class="text-[11px] text-brand-100">Meta diaria</div>
+            </div>
+          </div>
+
+          <!-- Mini barras rápidas en el header card -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4 pt-3.5 border-t border-white/15">
+            <div class="bg-white/10 rounded-2xl p-3">
+              <div class="text-[11px] text-brand-100">Hidratación</div>
+              <div id="heroWaterText" class="text-sm lg:text-base font-bold mt-0.5">0 / 2500 ml</div>
+            </div>
+            <div class="bg-white/10 rounded-2xl p-3">
+              <div class="text-[11px] text-brand-100">Rutina de hoy</div>
+              <div id="heroActivityText" class="text-sm lg:text-base font-bold mt-0.5">Pendiente</div>
+            </div>
+            <div class="hidden lg:block bg-white/10 rounded-2xl p-3">
+              <div class="text-[11px] text-brand-100">Racha Semanal</div>
+              <div id="heroWeeklyStreak" class="text-sm lg:text-base font-bold mt-0.5">0 / 7 días</div>
+            </div>
+            <div class="hidden lg:block bg-white/10 rounded-2xl p-3">
+              <div class="text-[11px] text-brand-100">Racha Mensual</div>
+              <div id="heroMonthlyStreak" class="text-sm lg:text-base font-bold mt-0.5">0 días</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grilla Principal de Resumen: 1 col móvil, 3 cols en escritorio -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 items-start">
+
+          <!-- Tarjeta Hidratación Rápida en Resumen -->
+          <div
+            class="bg-white rounded-3xl p-4 lg:p-5 shadow-sm border border-slate-200/70 flex flex-col justify-between h-full">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-xl bg-water-100 text-water-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-800">Hidratación de Hoy</h3>
+                    <p class="text-[11px] text-slate-500">Meta diaria: 2500 ml</p>
+                  </div>
+                </div>
+                <span id="summaryWaterFraction" class="text-sm font-extrabold text-water-600">0 / 2500 ml</span>
+              </div>
+
+              <!-- Barra de Progreso -->
+              <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden my-3.5">
+                <div id="summaryWaterBar"
+                  class="h-full bg-gradient-to-r from-water-500 to-brand-500 rounded-full transition-all duration-300"
+                  style="width: 0%"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <span id="summaryWaterRemaining" class="text-xs text-slate-500">Faltan 2500 ml</span>
+              <button type="button" onclick="addWater(250)"
+                class="px-4 py-2.5 min-h-[44px] rounded-2xl bg-water-600 hover:bg-water-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1">
+                <span>+ 250 ml</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tarjeta Actividad & Rachas en Resumen -->
+          <div
+            class="bg-white rounded-3xl p-4 lg:p-5 shadow-sm border border-slate-200/70 space-y-3 h-full flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-800">Actividad Física</h3>
+                    <p id="summaryRoutineName" class="text-[11px] text-slate-500">Rutina seleccionada</p>
+                  </div>
+                </div>
+                <span id="summaryActivityBadge"
+                  class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pendiente</span>
+              </div>
+
+              <!-- Contadores destacados de Racha Semanal y Mensual -->
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-2xl bg-slate-50 border border-slate-200/70 p-3">
+                  <div class="text-[11px] font-medium text-slate-500">Racha Semanal</div>
+                  <div class="flex items-baseline gap-1 mt-1">
+                    <span id="summaryWeeklyStreak" class="text-2xl font-extrabold text-brand-700">0</span>
+                    <span class="text-xs font-semibold text-slate-400">/ 7 días</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 mt-0.5">Semana actual (Lun-Dom)</div>
+                </div>
+
+                <div class="rounded-2xl bg-slate-50 border border-slate-200/70 p-3">
+                  <div class="text-[11px] font-medium text-slate-500">Racha Mensual</div>
+                  <div class="flex items-baseline gap-1 mt-1">
+                    <span id="summaryMonthlyStreak" class="text-2xl font-extrabold text-water-700">0</span>
+                    <span id="summaryMonthDaysTotal" class="text-xs font-semibold text-slate-400">días</span>
+                  </div>
+                  <div id="summaryMonthLabel" class="text-[10px] text-slate-400 mt-0.5">Este mes</div>
+                </div>
+              </div>
+            </div>
+
+            <button type="button" onclick="toggleTodayActivity()" id="summaryToggleActivityBtn"
+              class="w-full py-2.5 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white text-xs font-semibold transition shadow-sm">
+              Marcar rutina de hoy como completada
+            </button>
+          </div>
+
+          <!-- Tarjeta Último Chequeo Mensual de Salud -->
+          <div
+            class="bg-white rounded-3xl p-4 lg:p-5 shadow-sm border border-slate-200/70 space-y-3 h-full flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-800">Último Chequeo Mensual</h3>
+                  <p id="summaryLastCheckDate" class="text-[11px] text-slate-500">Sin registros aún</p>
+                </div>
+                <span id="summaryRiskBadge"
+                  class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">—</span>
+              </div>
+
+              <div id="summaryMetricsGrid" class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-slate-50 rounded-2xl p-2.5 border border-slate-100">
+                  <div class="text-[10px] font-semibold text-slate-400 uppercase">IMC</div>
+                  <div id="summaryImcVal" class="text-base font-extrabold text-slate-800 mt-0.5">--</div>
+                  <div id="summaryImcCat" class="text-[10px] text-slate-500 truncate">--</div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-2.5 border border-slate-100">
+                  <div class="text-[10px] font-semibold text-slate-400 uppercase">ICC</div>
+                  <div id="summaryIccVal" class="text-base font-extrabold text-slate-800 mt-0.5">--</div>
+                  <div class="text-[10px] text-slate-500">Cint/Cad</div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-2.5 border border-slate-100">
+                  <div class="text-[10px] font-semibold text-slate-400 uppercase">ICA</div>
+                  <div id="summaryIcaVal" class="text-base font-extrabold text-slate-800 mt-0.5">--</div>
+                  <div class="text-[10px] text-slate-500">Cint/Alt</div>
+                </div>
+              </div>
+            </div>
+
+            <p class="text-[11px] leading-relaxed text-slate-500 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+              <strong>Nota orientativa:</strong> Estos índices permiten observar tendencias personales mes a mes, pero
+              son referenciales y no reemplazan una evaluación médica profesional.
+            </p>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- PESTAÑA 2: SALUD                                          -->
+      <!-- ========================================================= -->
+      <section id="tab-salud" class="tab-content hidden space-y-4 lg:space-y-6">
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+
+          <!-- Columna Izquierda: Control de Agua + Historial en Desktop -->
+          <div class="lg:col-span-5 space-y-4 lg:space-y-6">
+
+            <!-- Bloque 1: Control de Ingesta de Agua (Tope 2500 ml) -->
+            <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70">
+              <div class="flex items-center justify-between mb-1">
+                <div>
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-water-600">Hidratación Diaria</span>
+                  <h2 class="text-lg font-bold text-slate-900">Control de Agua</h2>
+                </div>
+                <span
+                  class="px-2.5 py-1 rounded-full bg-water-50 text-water-700 text-xs font-bold border border-water-200">Tope
+                  2500 ml</span>
+              </div>
+
+              <!-- Anillo visual SVG de progreso -->
+              <div class="flex flex-col items-center justify-center my-4 relative">
+                <svg class="w-44 h-44 -rotate-90" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" stroke-width="10" />
+                  <circle id="waterRingProgress" cx="60" cy="60" r="50" fill="none" stroke="#0284c7" stroke-width="10"
+                    stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16"
+                    class="transition-all duration-500" />
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span id="waterCurrentDisplay" class="text-2xl font-extrabold text-slate-900">0 ml</span>
+                  <span class="text-xs font-medium text-slate-400">de 2500 ml</span>
+                  <span id="waterPercentDisplay" class="text-[11px] font-bold text-water-600 mt-1">0%</span>
+                </div>
+              </div>
+
+              <!-- Controles rápidos -->
+              <div class="grid grid-cols-2 gap-2.5">
+                <button type="button" onclick="addWater(250)"
+                  class="py-3 px-3 min-h-[44px] rounded-2xl bg-water-600 hover:bg-water-700 active:scale-95 text-white font-bold text-sm shadow-sm transition">
+                  + 250 ml
+                </button>
+                <button type="button" onclick="addWater(500)"
+                  class="py-3 px-3 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-bold text-sm shadow-sm transition">
+                  + 500 ml
+                </button>
+                <button type="button" onclick="addWater(-250)"
+                  class="py-2.5 px-3 min-h-[44px] rounded-2xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs transition">
+                  - 250 ml
+                </button>
+                <button type="button" onclick="resetTodayWater()"
+                  class="py-2.5 px-3 min-h-[44px] rounded-2xl bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 font-semibold text-xs transition">
+                  Reiniciar hoy
+                </button>
+              </div>
+            </div>
+
+            <!-- Historial Mensual -->
+            <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-3">
+              <h3 class="text-sm font-bold text-slate-800">Historial de Mediciones</h3>
+              <div id="healthHistoryList" class="space-y-2.5">
+                <!-- Renderizado dinámico -->
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Columna Derecha: Chequeo Mensual Antropométrico -->
+          <div class="lg:col-span-7 bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-4">
+            <div>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Evaluación Mensual</span>
+              <h2 class="text-lg font-bold text-slate-900">IMC, ICC, ICA y Riesgo</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Ingresa tus medidas una vez al mes para calcular tus indicadores.
+              </p>
+            </div>
+
+            <form id="healthMetricsForm" class="space-y-3.5">
+              <!-- Selector Sexo Biológico de Referencia para ICC -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Sexo de referencia (para umbral
+                  ICC)</label>
+                <div class="grid grid-cols-2 gap-2.5">
+                  <label class="cursor-pointer">
+                    <input type="radio" name="bioSex" value="M" class="peer sr-only">
+                    <div
+                      class="text-center py-2.5 px-3 min-h-[44px] flex items-center justify-center rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600 transition">
+                      Hombre
+                    </div>
+                  </label>
+                  <label class="cursor-pointer">
+                    <input type="radio" name="bioSex" value="F" class="peer sr-only">
+                    <div
+                      class="text-center py-2.5 px-3 min-h-[44px] flex items-center justify-center rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600 transition">
+                      Mujer
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3">
+                <div>
+                  <label for="inputHeight" class="block text-xs font-semibold text-slate-700 mb-1">Altura (cm)</label>
+                  <input id="inputHeight" type="number" step="0.1" min="100" max="250" required placeholder="Ej. 172"
+                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                  <label for="inputWeight" class="block text-xs font-semibold text-slate-700 mb-1">Peso (kg)</label>
+                  <input id="inputWeight" type="number" step="0.1" min="30" max="300" required placeholder="Ej. 74.5"
+                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                  <label for="inputWaist" class="block text-xs font-semibold text-slate-700 mb-1">Cintura (cm)</label>
+                  <input id="inputWaist" type="number" step="0.1" min="40" max="200" required placeholder="Ej. 84"
+                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                  <label for="inputHip" class="block text-xs font-semibold text-slate-700 mb-1">Cadera (cm)</label>
+                  <input id="inputHip" type="number" step="0.1" min="50" max="220" required placeholder="Ej. 98"
+                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+              </div>
+
+              <button type="submit"
+                class="w-full py-3 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold text-sm shadow-sm transition">
+                Calcular y Guardar Registro Mensual
+              </button>
+            </form>
+
+            <!-- Resultado Destacado del Último Cálculo -->
+            <div id="latestHealthResultCard" class="rounded-2xl bg-slate-50 border border-slate-200/80 p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">Resultado actual</span>
+                <span id="healthRiskTag"
+                  class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Riesgo
+                  Bajo</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2.5 text-center">
+                <div class="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <div class="text-[10px] text-slate-400 font-semibold">IMC</div>
+                  <div id="resImc" class="text-base font-extrabold text-slate-900">--</div>
+                  <div id="resImcLabel" class="text-[10px] text-slate-500">--</div>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <div class="text-[10px] text-slate-400 font-semibold">ICC</div>
+                  <div id="resIcc" class="text-base font-extrabold text-slate-900">--</div>
+                  <div id="resIccLabel" class="text-[10px] text-slate-500">--</div>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <div class="text-[10px] text-slate-400 font-semibold">ICA</div>
+                  <div id="resIca" class="text-base font-extrabold text-slate-900">--</div>
+                  <div id="resIcaLabel" class="text-[10px] text-slate-500">--</div>
+                </div>
+              </div>
+              <p id="resRiskExplanation" class="text-[11px] text-slate-600 leading-relaxed"></p>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- PESTAÑA 3: ACTIVIDAD                                      -->
+      <!-- ========================================================= -->
+      <section id="tab-actividad" class="tab-content hidden space-y-4 lg:space-y-6">
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+
+          <!-- Columna Izquierda: Rachas y Calendario -->
+          <div class="lg:col-span-5 bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Constancia</span>
+                <h2 class="text-lg font-bold text-slate-900">Rachas y Calendario</h2>
+              </div>
+              <span id="calendarMonthTitle"
+                class="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full capitalize">Mes</span>
+            </div>
+
+            <!-- Contadores de Racha -->
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-brand-50/70 border border-brand-200/70 rounded-2xl p-3">
+                <div class="text-xs font-semibold text-brand-800">Racha Semanal</div>
+                <div class="text-2xl font-extrabold text-brand-700 mt-0.5"><span id="actWeeklyCount">0</span><span
+                    class="text-sm font-semibold text-brand-600/70"> / 7</span></div>
+                <div class="text-[11px] text-brand-700/80">días activos esta semana</div>
+              </div>
+              <div class="bg-water-50/70 border border-water-200/70 rounded-2xl p-3">
+                <div class="text-xs font-semibold text-water-800">Racha Mensual</div>
+                <div class="text-2xl font-extrabold text-water-700 mt-0.5"><span id="actMonthlyCount">0</span><span
+                    class="text-sm font-semibold text-water-600/70"> días</span></div>
+                <div class="text-[11px] text-water-700/80">completados este mes</div>
+              </div>
+            </div>
+
+            <!-- Mini Calendario del Mes -->
+            <div>
+              <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-1.5">
+                <div>L</div>
+                <div>M</div>
+                <div>X</div>
+                <div>J</div>
+                <div>V</div>
+                <div>S</div>
+                <div>D</div>
+              </div>
+              <div id="miniCalendarGrid" class="grid grid-cols-7 gap-1.5 text-center">
+                <!-- Días generados por JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Columna Derecha: Rutina del Día y Gestor de Rutinas -->
+          <div class="lg:col-span-7 space-y-4 lg:space-y-6">
+
+            <!-- Selector de Rutina del Día y Botón de Cumplimiento -->
+            <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-3.5">
+              <div>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Sesión de Hoy</span>
+                <h2 class="text-lg font-bold text-slate-900">Rutina del Día</h2>
+              </div>
+
+              <div>
+                <label for="todayRoutineSelect" class="block text-xs font-semibold text-slate-600 mb-1.5">Elige la
+                  rutina a realizar hoy:</label>
+                <select id="todayRoutineSelect"
+                  class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                  <!-- Opciones dinámicas -->
+                </select>
+              </div>
+
+              <!-- Vista previa de las 3 fases de la rutina elegida -->
+              <div id="selectedRoutinePreview"
+                class="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/70 space-y-2 text-xs">
+                <!-- Renderizado dinámico -->
+              </div>
+
+              <!-- Botón Principal Grande para Marcar/Desmarcar Hoy -->
+              <button type="button" id="mainCompleteRoutineBtn" onclick="toggleTodayActivity()"
+                class="w-full py-3.5 px-4 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                <span id="mainCompleteRoutineText">Marcar Rutina de Hoy Completada</span>
+              </button>
+            </div>
+
+            <!-- Gestor de Rutinas (Agregar y Ver Todas) -->
+            <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-4">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">Mis Rutinas</h3>
+                  <p class="text-xs text-slate-500">Estructura: Calentamiento · Ejercicio · Enfriamiento</p>
+                </div>
+                <button type="button" id="toggleNewRoutineFormBtn"
+                  class="px-3.5 py-2 min-h-[44px] rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold text-xs transition border border-brand-200 shrink-0">
+                  + Nueva rutina
+                </button>
+              </div>
+
+              <!-- Formulario Colapsable para Nueva Rutina -->
+              <form id="newRoutineForm" class="hidden bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Agregar Nueva Rutina</h4>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre de la rutina</label>
+                  <input id="routineNameInput" type="text" required placeholder="Ej. Fuerza Tren Superior 30 min"
+                    class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-amber-700 mb-1">1. Calentamiento</label>
+                  <input id="routineWarmupInput" type="text" required
+                    placeholder="Ej. 5 min movilidad articular y jumping jacks"
+                    class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-brand-700 mb-1">2. Ejercicio (Bloque Principal)</label>
+                  <textarea id="routineMainInput" rows="2" required
+                    placeholder="Ej. 3x12 flexiones, 3x15 sentadillas, 3x30s plancha"
+                    class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-water-700 mb-1">3. Enfriamiento</label>
+                  <input id="routineCooldownInput" type="text" required
+                    placeholder="Ej. 5 min estiramientos suaves y respiración"
+                    class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div class="flex gap-2 pt-1">
+                  <button type="submit"
+                    class="flex-1 py-2.5 min-h-[44px] rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition">
+                    Guardar Rutina
+                  </button>
+                  <button type="button" id="cancelNewRoutineBtn"
+                    class="px-4 py-2.5 min-h-[44px] rounded-xl bg-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-300 transition">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+
+              <!-- Lista de Rutinas Guardadas -->
+              <div id="routinesListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <!-- Renderizado dinámico -->
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- PESTAÑA 4: Finanzas                                      -->
+      <!-- ========================================================= -->
+      <section id="tab-finanzas" class="tab-content hidden space-y-4 lg:space-y-6">
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+
+          <!-- Columna Izquierda: Rachas y Calendario -->
+          <div class="lg:col-span-5 bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Próximamente</span>
+                <h2 class="text-lg font-bold text-slate-900">En desarrollo</h2>
+              </div>
+            </div>
+
+          </div>
+
+      </section>
+
+    </main>
+
+    </main>
+
+    <p class="text-center text-[11px] text-slate-400 pb-24 lg:pb-6">
+      3-Pilares · <span id="appVersion">v…</span>
+    </p>
+
+    <!-- Navegación Inferior Fija en Móvil / PWA (lg:hidden) -->
+    <nav aria-label="Navegación móvil"
+      class="lg:hidden fixed bottom-0 left-0 right-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 z-30 flex items-center justify-around">
+      <div class="w-full max-w-md mx-auto flex items-center justify-around">
+        <button type="button" data-tab="resumen"
+          class="nav-btn flex-1 min-h-[44px] flex flex-col items-center justify-center py-1.5 rounded-2xl text-brand-600 font-bold transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+          </svg>
+          <span class="text-[11px]">Resumen</span>
+        </button>
+
+        <button type="button" data-tab="salud"
+          class="nav-btn flex-1 min-h-[44px] flex flex-col items-center justify-center py-1.5 rounded-2xl text-slate-400 font-medium transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+          </svg>
+          <span class="text-[11px]">Salud</span>
+        </button>
+
+        <button type="button" data-tab="actividad"
+          class="nav-btn flex-1 min-h-[44px] flex flex-col items-center justify-center py-1.5 rounded-2xl text-slate-400 font-medium transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
+          </svg>
+          <span class="text-[11px]">Actividad</span>
+        </button>
+
+        <button type="button" data-tab="finanzas"
+          class="nav-btn flex-1 min-h-[44px] flex flex-col items-center justify-center py-1.5 rounded-2xl text-slate-400 font-medium transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+          <span class="text-[11px]">Finanzas</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ========================================================= -->
+    <!-- MODAL: NOTIFICACIONES Y EXPORTACIÓN .ICS / MODO PWA       -->
+    <!-- ========================================================= -->
+    <div id="notificationsModal"
+      class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div
+        class="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Automatización</span>
+            <h3 class="text-lg font-bold text-slate-900">Notificaciones y PWA</h3>
+          </div>
+          <button type="button" id="closeNotificationsBtn"
+            class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
+            ✕
+          </button>
+        </div>
+
+        <!-- Estado Permisos Notificaciones del Navegador -->
+        <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800">Notificaciones del Navegador</span>
+            <span id="browserPermBadge"
+              class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Sin activar</span>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            Activa los avisos directos en tu dispositivo y prueba una notificación instantánea.
+          </p>
+          <div class="flex gap-2">
+            <button type="button" id="requestNotifPermBtn"
+              class="flex-1 py-2 px-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition">
+              Activar Permiso
+            </button>
+            <button type="button" id="testNotifBtn"
+              class="py-2 px-3 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition">
+              Probar Aviso
+            </button>
+          </div>
+        </div>
+
+        <!-- Configuración de Horarios Preferidos -->
+        <div class="space-y-3">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600">Horarios de Recordatorios</h4>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="waterStartTime" class="block text-xs font-semibold text-slate-700 mb-1">Inicio Agua (cada
+                3h)</label>
+              <input id="waterStartTime" type="time" value="09:00"
+                class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
+            </div>
+            <div>
+              <label for="activityTime" class="block text-xs font-semibold text-slate-700 mb-1">Rutina Diaria</label>
+              <input id="activityTime" type="time" value="18:30"
+                class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
+            </div>
+          </div>
+
+          <button type="button" id="saveReminderPrefsBtn"
+            class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition">
+            Guardar Horarios
+          </button>
+        </div>
+
+        <!-- Descarga de Archivo .ICS (Solución infalible para iOS y Android) -->
+        <div class="bg-gradient-to-br from-water-50 to-brand-50 rounded-2xl p-4 border border-brand-200/70 space-y-2.5">
+          <div class="flex items-center gap-2">
+            <span class="text-base">📅</span>
+            <h4 class="text-xs font-bold text-slate-900">Recordatorios Recurrentes (.ics)</h4>
+          </div>
+          <p class="text-[11px] text-slate-600 leading-relaxed">
+            Descarga e importa este archivo en Google Calendar o Apple Calendar para recibir alarmas automáticas incluso
+            con la app cerrada:
+          </p>
+          <ul class="text-[11px] text-slate-700 space-y-1 pl-4 list-disc">
+            <li><strong>Agua:</strong> 4 avisos diarios (500 ml c/u hasta 2500 ml).</li>
+            <li><strong>Actividad:</strong> Aviso diario para tu rutina.</li>
+            <li><strong>Salud Mensual:</strong> Alarma el día 1 de cada mes para medir IMC, ICC e ICA.</li>
+          </ul>
+          <button type="button" id="downloadIcsBtn"
+            class="w-full py-3 rounded-2xl bg-water-600 hover:bg-water-700 active:scale-[0.99] text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span>Descargar Recordatorios (.ics)</span>
+          </button>
+        </div>
+
+        <!-- Tip de Instalación PWA -->
+        <div class="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+          <strong>📲 Instalar como App (PWA):</strong> En Safari (iPhone) toca <em>Compartir → Añadir a pantalla de
+            inicio</em>. En Chrome (Android) toca <em>Menú ⋮ → Instalar aplicación</em>.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+
+</html>

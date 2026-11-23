@@ -1,0 +1,30 @@
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  overflow-x: hidden;
+}
+/* Custom scrollbar subtle */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.tab-content {
+  animation: fadeSlide 0.22s ease-out;
+}
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
