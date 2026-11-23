@@ -727,7 +727,7 @@ function renderAll() {
   // --- RENDER PESTAÑA ACTIVIDAD ---
   document.getElementById('actWeeklyCount').textContent = weeklyStreak;
   document.getElementById('actMonthlyCount').textContent = monthlyStreak;
-  document.getElementById('calendarMonthTitle').textContent = now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  document.getElementById('calendarMonthTitle').textContent = now.toLocaleDateString('es-ES', { month: '', year: 'numeric' });
 
   // Mini calendario del mes
   const calGrid = document.getElementById('miniCalendarGrid');
