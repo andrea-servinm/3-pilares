@@ -150,6 +150,7 @@ async function createInitialState(activityData) {
 
   return {
     waterLogs: { [todayKey]: water.todayInitialMl },
+    waterHistory: [],
     routines: savedRoutines,
     selectedRoutineId: routines.selectedRoutineId,
     completedActivityDates: completedDates,
@@ -169,6 +170,7 @@ async function loadState(activityData) {
       return initial;
     }
     const parsed = JSON.parse(raw);
+    parsed.waterHistory = Array.isArray(parsed.waterHistory) ? parsed.waterHistory : [];
     parsed.healthRecords = (parsed.healthRecords || []).map(recalculateHealthRecord);
     parsed.activityLog = Object.fromEntries(
       Object.entries(parsed.activityLog || {}).map(([date, routineIds]) => [
@@ -234,6 +236,15 @@ function getTodayWater() {
   return appState.waterLogs[key] || 0;
 }
 
+function recordWaterChange(dateKey, amountMl) {
+  appState.waterHistory = Array.isArray(appState.waterHistory) ? appState.waterHistory : [];
+  appState.waterHistory.push({
+    date: dateKey,
+    amountMl,
+    loggedAt: new Date().toISOString()
+  });
+}
+
 function addWater(deltaMl) {
   const key = getLocalDateKey();
   const current = getTodayWater();
@@ -244,14 +255,18 @@ function addWater(deltaMl) {
   }
 
   const updated = Math.max(0, Math.min(WATER_CAP_ML, current + deltaMl));
+  const recordedChange = updated - current;
+  if (recordedChange) recordWaterChange(key, recordedChange);
   appState.waterLogs[key] = updated;
   saveState(appState);
   renderAll();
 
   if (updated === WATER_CAP_ML && current < WATER_CAP_ML) {
     showToast('¡Meta diaria de 2500 ml completada! 💧');
-  } else if (deltaMl > 0) {
-    showToast(`+${deltaMl} ml registrados (${updated} / 2500 ml)`);
+  } else if (recordedChange > 0) {
+    showToast(`+${recordedChange} ml registrados (${updated} / 2500 ml)`);
+  } else if (recordedChange < 0) {
+    showToast(`Ajuste de ${recordedChange} ml registrado (${updated} / 2500 ml)`);
   } else {
     showToast(`Ajustado a ${updated} ml`);
   }
@@ -259,6 +274,7 @@ function addWater(deltaMl) {
 
 function resetTodayWater() {
   const key = getLocalDateKey();
+  appState.waterHistory = (appState.waterHistory || []).filter(entry => entry.date !== key);
   appState.waterLogs[key] = 0;
   saveState(appState);
   renderAll();
@@ -533,7 +549,7 @@ function renderWeekRow() {
     const count = getCompletedRoutineCount(key);
     const isToday = key === todayKey;
     const isSelected = key === selectedCalendarDate;
-    let cls = 'relative w-9 h-10 rounded-xl flex items-center justify-center text-xs font-bold border transition ';
+    let cls = 'relative min-w-0 min-h-[44px] flex-1 rounded-xl flex items-center justify-center text-xs font-bold border transition ';
     if (count) cls += 'bg-brand-600 text-white border-brand-600';
     else if (isToday) cls += 'bg-white text-brand-700 border-2 border-brand-500';
     else cls += 'bg-white text-slate-500 border-slate-200';
@@ -1063,6 +1079,7 @@ function renderAll() {
   const circumference = 314.16;
   const offset = circumference - (waterPct / 100) * circumference;
   document.getElementById('waterRingProgress').style.strokeDashoffset = offset;
+  renderWaterHistory();
 
   if (latestHealth) {
     document.getElementById('latestHealthResultCard').classList.remove('hidden');
@@ -1097,7 +1114,8 @@ function renderAll() {
   if (appState.healthRecords.length === 0) {
     historyContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-3">Aún no hay mediciones mensuales registradas.</p>`;
   } else {
-    historyContainer.innerHTML = appState.healthRecords.map(rec => `
+    const records = [...appState.healthRecords].sort((a, b) => b.date.localeCompare(a.date));
+    const renderHealthRecords = items => items.map(rec => `
           <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2">
             <div>
               <div class="flex items-center gap-2">
@@ -1114,6 +1132,20 @@ function renderAll() {
             </button>
           </div>
         `).join('');
+    const recentRecords = records.slice(0, 3);
+    const olderRecords = records.slice(3);
+
+    historyContainer.innerHTML = `
+      ${renderHealthRecords(recentRecords)}
+      ${olderRecords.length ? `
+        <details class="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <summary class="cursor-pointer text-xs font-semibold text-brand-700">
+            Ver más (${olderRecords.length} ${olderRecords.length === 1 ? 'medición' : 'mediciones'})
+          </summary>
+          <div class="mt-2.5 space-y-2.5">${renderHealthRecords(olderRecords)}</div>
+        </details>
+      ` : ''}
+    `;
   }
 
   // --- RENDER PESTAÑA ACTIVIDAD ---
@@ -1144,7 +1176,7 @@ function renderAll() {
     const isSelected = dKey === selectedCalendarDate;
     const dayDate = parseDateKey(dKey);
 
-    let cellClass = 'relative w-8 h-9 mx-auto rounded-lg flex items-center justify-center text-xs font-semibold transition ';
+    let cellClass = 'relative w-full min-h-[44px] rounded-lg flex items-center justify-center text-xs font-semibold transition ';
     if (count) {
       cellClass += 'bg-brand-600 text-white font-bold shadow-xs';
     } else if (isToday) {
@@ -1311,6 +1343,46 @@ function renderExerciseHistory() {
         <div class="mt-2.5 space-y-2.5">${renderHistoryGroups(olderHistory)}</div>
       </details>
     ` : ''}
+  `;
+}
+
+function renderWaterHistory() {
+  const historyList = document.getElementById('waterHistoryList');
+  const history = Array.isArray(appState.waterHistory) ? appState.waterHistory : [];
+  const todayKey = getLocalDateKey();
+  const dailyEntries = history
+    .filter(entry => entry.date === todayKey)
+    .sort((a, b) => (Date.parse(b.loggedAt) || 0) - (Date.parse(a.loggedAt) || 0));
+  if (!dailyEntries.length) {
+    historyList.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">Aún no hay ingestas de agua hoy.</p>';
+    return;
+  }
+
+  const visibleEntries = dailyEntries.slice(0, 3);
+  const olderEntries = dailyEntries.slice(3);
+  const renderEntries = entries => entries.map(entry => {
+    const amountMl = Number(entry.amountMl) || 0;
+    const label = amountMl < 0 ? `Ajuste: ${amountMl} ml` : `${amountMl} ml`;
+    return `
+      <article class="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white px-3 py-2 text-[11px]">
+        <span class="font-semibold text-slate-500">${formatActivityLoggedTime(entry.loggedAt)}</span>
+        <span class="shrink-0 font-bold text-water-700">${label}</span>
+      </article>
+    `;
+  }).join('');
+
+  historyList.innerHTML = `
+    <div class="space-y-2.5">
+      <div class="space-y-1.5">${renderEntries(visibleEntries)}</div>
+      ${olderEntries.length ? `
+        <details class="pt-1">
+          <summary class="cursor-pointer text-[11px] font-semibold text-water-700">
+            Ver más (${olderEntries.length} ${olderEntries.length === 1 ? 'registro' : 'registros'})
+          </summary>
+          <div class="mt-2 space-y-1.5">${renderEntries(olderEntries)}</div>
+        </details>
+      ` : ''}
+    </div>
   `;
 }
 
