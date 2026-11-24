@@ -108,28 +108,28 @@
           </div>
 
           <!-- Indicadores del día -->
-          <div class="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-white/15">
-            <div class="bg-white/10 rounded-2xl p-3">
-              <div id="heroWaterPercent" class="text-xl lg:text-2xl font-extrabold mt-0.5">0%</div>
-              <div class="text-[11px] text-brand-100">Agua ingerida</div>
+          <div class="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/15">
+            <div class="bg-white/10 rounded-2xl p-2 flex flex-col justify-center text-left">
+              <div id="heroWaterPercent" class="text-lg lg:text-xl font-extrabold">0%</div>
+              <div class="text-[10px] text-brand-100">Agua ingerida</div>
             </div>
-            <div class="bg-white/10 rounded-2xl p-3">
-              <div id="heroWaterText" class="text-xl lg:text-base font-bold mt-0.5">0 / 2500 ml</div>
-              <div class="text-[11px] text-brand-100">Hidratación</div>
+            <div class="bg-white/10 rounded-2xl p-2 flex flex-col justify-center text-left">
+              <div id="heroWaterText" class="text-xl lg:text-base font-bold">0 / 2500 ml</div>
+              <div class="text-[10px] text-brand-100">Hidratación</div>
             </div>
-            <div class="bg-white/10 rounded-2xl p-3">
-              <div class="flex items-baseline gap-1 mt-0.5">
-                <span id="heroCurrentStreak" class="text-xl lg:text-2xl font-extrabold">0</span>
+            <div class="bg-white/10 rounded-2xl p-2 flex flex-col justify-center text-left">
+              <div class="flex items-baseline gap-1">
+                <span id="heroCurrentStreak" class="text-lg lg:text-xl font-extrabold">0</span>
                 <span class="text-xs font-semibold text-brand-100">días</span>
               </div>
-              <div class="text-[11px] text-brand-100">Racha actual de actividad</div>
+              <div class="text-[10px] text-brand-100">Racha actual de actividad</div>
             </div>
-            <div class="bg-white/10 rounded-2xl p-3">
-              <div id="heroActivityText" class="text-xl lg:text-base font-bold mt-0.5">Pendiente</div>
-              <div class="text-[11px] text-brand-100">Rutina de hoy</div>
+            <div class="bg-white/10 rounded-2xl p-2 flex flex-col justify-center text-left">
+              <div id="heroActivityText" class="text-lg lg:text-base font-bold">Pendiente</div>
+              <div class="text-[10px] text-brand-100">Rutina de hoy</div>
             </div>
-            <div class="col-span-2 bg-white/10 rounded-2xl p-3 flex items-center justify-between gap-3">
-              <div class="text-[11px] text-brand-100">Riesgo cardiometabólico</div>
+            <div class="col-span-2 bg-white/10 rounded-2xl p-2 flex items-center justify-between gap-3">
+              <div class="text-xl lg:text-base font-bold">Riesgo cardiometabólico</div>
               <span id="heroHealthRiskBadge"
                 class="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold">Sin datos</span>
             </div>
@@ -529,16 +529,20 @@
           <!-- Columna Derecha: Rutina del Día y Gestor de Rutinas -->
           <div class="lg:col-span-7 space-y-4 lg:space-y-6">
 
-            <!-- Rutinas programadas para hoy -->
+            <!-- Rutinas del día seleccionado -->
             <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-3.5">
               <div>
-                <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Sesión de Hoy</span>
-                <h2 class="text-lg font-bold text-slate-900">Rutina del Día</h2>
+                <span id="selectedRoutineDateLabel" class="text-[11px] font-bold tracking-wider text-brand-600">Hoy</span>
+                <h2 id="selectedRoutineDateTitle" class="text-lg font-bold text-slate-900">Rutinas programadas</h2>
               </div>
 
               <p id="todayScheduledRoutines" class="text-[11px] text-slate-500" aria-live="polite"></p>
+              <div id="noScheduledRoutineMessage" class="hidden rounded-2xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+                <p id="noScheduledRoutineText" class="text-xs leading-relaxed text-slate-600">Descanso. Si entrenaste igual, registra tu entrenamiento y el día se marcará como completo.</p>
+                <div id="routineFormInlineContainer" class="pt-1"></div>
+              </div>
               <div id="todayRoutinesList" class="space-y-3">
-                <!-- Rutinas de hoy generadas por JS -->
+                <!-- Rutinas del día seleccionado generadas por JS -->
               </div>
               <details id="otherRoutinesSection" class="group hidden rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
                 <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-700">
@@ -564,55 +568,69 @@
                 </button>
               </div>
 
-              <!-- Formulario Colapsable para Nueva Rutina -->
-              <form id="newRoutineForm" class="hidden bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Agregar Nueva Rutina</h4>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre de la rutina</label>
-                  <input id="routineNameInput" type="text" required placeholder="Ej. Fuerza Tren Superior 30 min"
-                    class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-amber-700 mb-1">1. Calentamiento</label>
-                  <input id="routineWarmupInput" type="text" required
-                    placeholder="Ej. 5 min movilidad articular y jumping jacks"
-                    class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-brand-700 mb-1">2. Ejercicio (Bloque Principal)</label>
-                  <textarea id="routineMainInput" rows="2" required
-                    placeholder="Ej. 3x12 flexiones, 3x15 sentadillas, 3x30s plancha"
-                    class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-water-700 mb-1">3. Enfriamiento</label>
-                  <input id="routineCooldownInput" type="text" required
-                    placeholder="Ej. 5 min estiramientos suaves y respiración"
-                    class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
-                <fieldset>
-                  <legend class="block text-xs font-semibold text-slate-700 mb-2">Días programados</legend>
-                  <div class="grid grid-cols-4 gap-2 sm:grid-cols-7">
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="1"> L</label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="2"> M</label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="3"> Mi</label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="4"> J</label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="5"> V</label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="6"> S</label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="7"> D</label>
+              <dialog id="newRoutineModal" aria-labelledby="newRoutineTitle"
+                class="w-[calc(100%-2rem)] max-w-xl max-h-[90vh] overflow-y-auto p-0 rounded-3xl bg-white shadow-2xl backdrop:bg-slate-950/50">
+                <div class="p-5 lg:p-6 space-y-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <h2 id="newRoutineTitle" class="text-lg font-bold text-slate-900">Agregar Nueva Rutina</h2>
+                    <button type="button" id="closeNewRoutineModalBtn" aria-label="Cerrar"
+                      class="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">✕</button>
                   </div>
-                </fieldset>
-                <div class="flex gap-2 pt-1">
-                  <button type="submit"
-                    class="flex-1 py-2.5 min-h-[44px] rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition">
-                    Guardar Rutina
-                  </button>
-                  <button type="button" id="cancelNewRoutineBtn"
-                    class="px-4 py-2.5 min-h-[44px] rounded-xl bg-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-300 transition">
-                    Cancelar
-                  </button>
+                  <div id="routineFormModalContainer">
+                    <form id="newRoutineForm" class="space-y-3">
+                      <h3 id="routineFormInlineTitle" class="hidden text-sm font-bold text-slate-800">Registrar entrenamiento</h3>
+                      <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre de la rutina</label>
+                        <input id="routineNameInput" type="text" required placeholder="Ej. Fuerza Tren Superior 30 min"
+                          class="w-full px-3 py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500">
+                      </div>
+                      <fieldset id="routineDaysFieldset">
+                        <legend class="block text-xs font-semibold text-slate-700 mb-2">Días programados</legend>
+                        <div class="flex flex-nowrap items-center gap-2">
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="1"> L</label>
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="2"> M</label>
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="3"> Mi</label>
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="4"> J</label>
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="5"> V</label>
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="6"> S</label>
+                          <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" name="routineDays" value="7"> D</label>
+                        </div>
+                      </fieldset>
+                      <div>
+                        <label class="block text-xs font-semibold text-amber-700 mb-1">1. Calentamiento</label>
+                        <textarea id="routineWarmupInput" rows="5" required
+                          placeholder="Ej. 5 min movilidad articular y jumping jacks"
+                          style="resize: vertical"
+                          class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-semibold text-brand-700 mb-1">2. Ejercicio (Bloque Principal)</label>
+                        <textarea id="routineMainInput" rows="10" required
+                          placeholder="Ej. 3x12 flexiones, 3x15 sentadillas, 3x30s plancha"
+                          style="resize: vertical"
+                          class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-semibold text-water-700 mb-1">3. Enfriamiento</label>
+                        <textarea id="routineCooldownInput" rows="5" required
+                          placeholder="Ej. 5 min estiramientos suaves y respiración"
+                          style="resize: vertical"
+                          class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+                      </div>
+                      <div class="flex gap-2 pt-1">
+                        <button id="saveRoutineBtn" type="submit"
+                          class="flex-1 py-2.5 min-h-[44px] rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition">
+                          Guardar Rutina
+                        </button>
+                        <button type="button" id="cancelNewRoutineBtn"
+                          class="px-4 py-2.5 min-h-[44px] rounded-xl bg-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-300 transition">
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
-              </form>
+              </dialog>
 
               <!-- Lista de Rutinas Guardadas -->
               <div id="routinesListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -622,6 +640,13 @@
 
           </div>
 
+        </div>
+
+        <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-3">
+          <h3 class="text-sm font-bold text-slate-800">Historial de Ejercicios</h3>
+          <div id="exerciseHistoryList" class="space-y-2.5" aria-live="polite">
+            <!-- Renderizado dinámico -->
+          </div>
         </div>
 
       </section>

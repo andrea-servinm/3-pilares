@@ -20,6 +20,10 @@ function getLocalDateKey(dateObj = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+function isFutureDate(dateKey, todayKey = getLocalDateKey()) {
+  return dateKey > todayKey;
+}
+
 function formatDisplayDate(dateObj = new Date()) {
   return dateObj.toLocaleDateString('es-ES', {
     weekday: 'long',
@@ -33,6 +37,46 @@ function formatHealthRecordDate(dateKey) {
   return year && month && day ? `${day}/${month}/${year}` : dateKey;
 }
 
+function formatActivityLoggedTime(timestamp) {
+  if (!timestamp) return 'Hora no registrada';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime())
+    ? 'Hora no registrada'
+    : date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}
+
+function buildActivityHistory(activityLog, routines, history = [], seedTimes = new Map()) {
+  const existingEntries = new Map();
+  (Array.isArray(history) ? history : []).forEach(entry => {
+    if (entry?.date && entry.routineId) {
+      existingEntries.set(`${entry.date}\u0000${entry.routineId}`, entry);
+    }
+  });
+
+  return Object.entries(activityLog || {}).flatMap(([date, routineIds]) => {
+    const ids = Array.isArray(routineIds) ? routineIds : routineIds ? [routineIds] : [];
+    return ids.map(routineId => {
+      const existing = existingEntries.get(`${date}\u0000${routineId}`);
+      const routine = routines.find(item => item.id === routineId);
+      return {
+        date,
+        routineId,
+        routineName: existing?.routineName || routine?.name || 'Rutina eliminada',
+        loggedAt: existing?.loggedAt || seedTimes.get(`${date}\u0000${routineId}`) || null
+      };
+    });
+  });
+}
+
+function getActivitySeedTimes(activity) {
+  const seedTimes = new Map();
+  (activity.completedDates || []).forEach(entry => {
+    if (typeof entry !== 'object' || !entry.routineId || !entry.completedAt) return;
+    seedTimes.set(`${entry.date}\u0000${entry.routineId}`, entry.completedAt);
+  });
+  return seedTimes;
+}
+
 // Carga un JSON desde /data
 async function fetchJSON(path) {
   const res = await fetch(path);
@@ -41,11 +85,11 @@ async function fetchJSON(path) {
 }
 
 // Construye el estado inicial a partir de los archivos JSON de /data
-async function createInitialState() {
+async function createInitialState(activityData) {
   const [water, routines, activity, health, reminders] = await Promise.all([
     fetchJSON('data/water.json'),
     fetchJSON('data/routines.json'),
-    fetchJSON('data/activity.json'),
+    activityData ? Promise.resolve(activityData) : fetchJSON('data/activity.json'),
     fetchJSON('data/health-records.json'),
     fetchJSON('data/reminders.json')
   ]);
@@ -55,33 +99,42 @@ async function createInitialState() {
 
   const completedDates = [];
   const activityLog = {};
+  const activityHistory = [];
 
-  function logRoutine(date, routineId) {
+  function logRoutine(date, routineId, completedAt) {
     if (!routineId) return;
     activityLog[date] = [...new Set([...(activityLog[date] || []), routineId])];
+    const existing = activityHistory.find(entry => entry.date === date && entry.routineId === routineId);
+    if (existing) {
+      if (completedAt) existing.loggedAt = completedAt;
+      return;
+    }
+    activityHistory.push({ date, routineId, loggedAt: completedAt || null });
   }
 
   // a) Relativos: "hace N días" (opcional)
   (activity.completedDaysAgo || []).forEach(entry => {
     const daysAgo = typeof entry === 'object' ? entry.daysAgo : entry;
     const routineId = typeof entry === 'object' ? entry.routineId : null;
+    const completedAt = typeof entry === 'object' ? entry.completedAt : null;
     const prev = new Date(today);
     prev.setDate(today.getDate() - daysAgo);
     if (!activity.onlyCurrentMonth || prev.getMonth() === today.getMonth()) {
       const key = getLocalDateKey(prev);
       completedDates.push(key);
-      logRoutine(key, routineId);
+      logRoutine(key, routineId, completedAt);
     }
   });
 
-  // b) Fechas fijas: "AAAA-MM-DD" o { date, routineId }
+  // b) Fechas fijas: "AAAA-MM-DD" o { date, routineId, completedAt }
   const currentMonthPrefix = todayKey.slice(0, 7);
   (activity.completedDates || []).forEach(entry => {
     const date = typeof entry === 'object' ? entry.date : entry;
     const routineId = typeof entry === 'object' ? entry.routineId : null;
+    const completedAt = typeof entry === 'object' ? entry.completedAt : null;
     if (activity.onlyCurrentMonth && !date.startsWith(currentMonthPrefix)) return;
     if (!completedDates.includes(date)) completedDates.push(date);
-    logRoutine(date, routineId);
+    logRoutine(date, routineId, completedAt);
   });
 
   const healthRecords = health.records.map(({ monthsAgo, ...rec }) => {
@@ -90,25 +143,28 @@ async function createInitialState() {
     return recalculateHealthRecord({ ...rec, date: getLocalDateKey(d) });
   });
 
+  const savedRoutines = routines.routines.map(routine => ({
+    ...routine,
+    days: Array.isArray(routine.days) ? routine.days : []
+  }));
+
   return {
     waterLogs: { [todayKey]: water.todayInitialMl },
-    routines: routines.routines.map(routine => ({
-      ...routine,
-      days: Array.isArray(routine.days) ? routine.days : []
-    })),
+    routines: savedRoutines,
     selectedRoutineId: routines.selectedRoutineId,
     completedActivityDates: completedDates,
     activityLog,
+    activityHistory: buildActivityHistory(activityLog, savedRoutines, activityHistory),
     healthRecords,
     reminders
   };
 }
 
-async function loadState() {
+async function loadState(activityData) {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      const initial = await createInitialState();
+      const initial = await createInitialState(activityData);
       saveState(initial);
       return initial;
     }
@@ -124,6 +180,12 @@ async function loadState() {
       ...routine,
       days: Array.isArray(routine.days) ? routine.days : []
     }));
+    parsed.activityHistory = buildActivityHistory(
+      parsed.activityLog,
+      parsed.routines,
+      parsed.activityHistory,
+      getActivitySeedTimes(activityData)
+    );
     return parsed;
   } catch (err) {
     console.error('Error cargando estado:', err);
@@ -322,28 +384,53 @@ function getCompletedRoutineCount(dateKey) {
   return routineCount || (appState.completedActivityDates.includes(dateKey) ? 1 : 0);
 }
 
-function toggleRoutineActivity(routineId) {
-  if (!appState.routines.some(routine => routine.id === routineId)) return;
+function recordRoutineCompletion(dateKey, routine) {
+  appState.activityHistory = (appState.activityHistory || []).filter(entry =>
+    entry.date !== dateKey || entry.routineId !== routine.id
+  );
+  appState.activityHistory.push({
+    date: dateKey,
+    routineId: routine.id,
+    routineName: routine.name,
+    loggedAt: new Date().toISOString()
+  });
+}
 
-  const todayKey = getLocalDateKey();
+function removeRoutineCompletionFromHistory(dateKey, routineId) {
+  appState.activityHistory = (appState.activityHistory || []).filter(entry =>
+    entry.date !== dateKey || entry.routineId !== routineId
+  );
+}
+
+function toggleRoutineActivity(routineId, dateKey = getLocalDateKey()) {
+  if (isFutureDate(dateKey)) {
+    showToast('No puedes registrar actividad en una fecha futura.', 'warn');
+    return;
+  }
+
+  const routine = appState.routines.find(item => item.id === routineId);
+  if (!routine) return;
+
   appState.activityLog = appState.activityLog || {};
-  const completedRoutineIds = getCompletedRoutineIds(todayKey);
+  const completedRoutineIds = getCompletedRoutineIds(dateKey);
 
   if (completedRoutineIds.includes(routineId)) {
     const remainingRoutineIds = completedRoutineIds.filter(id => id !== routineId);
     if (remainingRoutineIds.length) {
-      appState.activityLog[todayKey] = remainingRoutineIds;
+      appState.activityLog[dateKey] = remainingRoutineIds;
     } else {
-      delete appState.activityLog[todayKey];
-      appState.completedActivityDates = appState.completedActivityDates.filter(date => date !== todayKey);
+      delete appState.activityLog[dateKey];
+      appState.completedActivityDates = appState.completedActivityDates.filter(date => date !== dateKey);
     }
-    showToast('Rutina de hoy desmarcada');
+    removeRoutineCompletionFromHistory(dateKey, routineId);
+    showToast(dateKey === getLocalDateKey() ? 'Rutina de hoy desmarcada' : 'Rutina del día desmarcada');
   } else {
-    appState.activityLog[todayKey] = [...completedRoutineIds, routineId];
-    if (!appState.completedActivityDates.includes(todayKey)) {
-      appState.completedActivityDates.push(todayKey);
+    appState.activityLog[dateKey] = [...completedRoutineIds, routineId];
+    if (!appState.completedActivityDates.includes(dateKey)) {
+      appState.completedActivityDates.push(dateKey);
     }
-    showToast(`¡Rutina completada! ${appState.activityLog[todayKey].length} en total hoy 🔥`);
+    recordRoutineCompletion(dateKey, routine);
+    showToast(`¡Rutina completada! ${appState.activityLog[dateKey].length} en total`);
   }
 
   saveState(appState);
@@ -445,14 +532,17 @@ function renderWeekRow() {
     const key = getLocalDateKey(d);
     const count = getCompletedRoutineCount(key);
     const isToday = key === todayKey;
+    const isSelected = key === selectedCalendarDate;
     let cls = 'relative w-9 h-10 rounded-xl flex items-center justify-center text-xs font-bold border transition ';
     if (count) cls += 'bg-brand-600 text-white border-brand-600';
     else if (isToday) cls += 'bg-white text-brand-700 border-2 border-brand-500';
     else cls += 'bg-white text-slate-500 border-slate-200';
-    const title = count ? `${count} ${count === 1 ? 'rutina completada' : 'rutinas completadas'}` : label;
-    return `<div class="${cls}" title="${title}"><span>${label}</span>${count > 1
+    if (isSelected) cls += ' ring-2 ring-brand-300 ring-offset-1';
+    const countLabel = `${count} ${count === 1 ? 'rutina completada' : 'rutinas completadas'}`;
+    const accessibleLabel = `${formatDisplayDate(d)}${count ? `, ${countLabel}` : ''}`;
+    return `<button type="button" class="${cls}" data-calendar-date="${key}" aria-pressed="${isSelected}" aria-label="${accessibleLabel}" title="${accessibleLabel}"><span>${label}</span>${count > 1
       ? `<span class="absolute -top-1 -right-1 z-10 min-w-4 h-4 px-1 rounded-full bg-brand-100 text-brand-800 border border-brand-200 text-[9px] leading-none flex items-center justify-center">${count}</span>`
-      : ''}</div>`;
+      : ''}</button>`;
   }).join('');
 }
 
@@ -468,6 +558,20 @@ function getMonthlyStreakCount() {
 
 // Selector de vista del calendario: 'week' (por defecto) o 'month'
 let calendarView = 'week';
+let selectedCalendarDate = getLocalDateKey();
+
+function handleCalendarDateClick(event) {
+  const button = event.target.closest('button[data-calendar-date]');
+  if (!button) return;
+  if (routineEntryDate && routineEntryDate !== button.dataset.calendarDate) {
+    newRoutineForm.reset();
+  }
+  selectedCalendarDate = button.dataset.calendarDate;
+  renderAll();
+}
+
+document.getElementById('weekRow').addEventListener('click', handleCalendarDateClick);
+document.getElementById('miniCalendarGrid').addEventListener('click', handleCalendarDateClick);
 
 function setCalendarView(view) {
   calendarView = view;
@@ -489,24 +593,104 @@ setCalendarView('week');
 
 // Formulario Nueva Rutina
 const newRoutineForm = document.getElementById('newRoutineForm');
-document.getElementById('toggleNewRoutineFormBtn').addEventListener('click', () => {
-  newRoutineForm.classList.toggle('hidden');
-});
-document.getElementById('cancelNewRoutineBtn').addEventListener('click', () => {
-  newRoutineForm.classList.add('hidden');
+const newRoutineModal = document.getElementById('newRoutineModal');
+const routineDaysFieldset = document.getElementById('routineDaysFieldset');
+const routineEntryDateTitle = document.getElementById('newRoutineTitle');
+const routineFormInlineTitle = document.getElementById('routineFormInlineTitle');
+const routineFormInlineContainer = document.getElementById('routineFormInlineContainer');
+const routineFormModalContainer = document.getElementById('routineFormModalContainer');
+const saveRoutineBtn = document.getElementById('saveRoutineBtn');
+const cancelNewRoutineBtn = document.getElementById('cancelNewRoutineBtn');
+let routineEntryDate = null;
+let editingRoutineId = null;
+
+function configureRoutineForm(isInline, dateKey = null) {
+  if (isInline) editingRoutineId = null;
+  routineEntryDate = isInline ? dateKey : null;
+  routineDaysFieldset.classList.toggle('hidden', isInline);
+  routineFormInlineTitle.classList.toggle('hidden', !isInline);
+  routineEntryDateTitle.textContent = editingRoutineId ? 'Editar Rutina' : 'Agregar Nueva Rutina';
+  saveRoutineBtn.textContent = isInline
+    ? 'Registrar entrenamiento'
+    : editingRoutineId ? 'Guardar cambios' : 'Guardar Rutina';
+  cancelNewRoutineBtn.textContent = isInline ? 'Limpiar' : 'Cancelar';
+  const container = isInline ? routineFormInlineContainer : routineFormModalContainer;
+  if (newRoutineForm.parentElement !== container) container.append(newRoutineForm);
+}
+
+function openNewRoutineModal() {
+  editingRoutineId = null;
   newRoutineForm.reset();
+  configureRoutineForm(false);
+  newRoutineModal.showModal();
+}
+
+function openEditRoutineModal(id) {
+  const routine = appState.routines.find(item => item.id === id);
+  if (!routine) return;
+
+  editingRoutineId = id;
+  configureRoutineForm(false);
+  document.getElementById('routineNameInput').value = routine.name;
+  document.getElementById('routineWarmupInput').value = routine.warmup;
+  document.getElementById('routineMainInput').value = routine.main;
+  document.getElementById('routineCooldownInput').value = routine.cooldown;
+  const routineDays = new Set(routine.days || []);
+  newRoutineForm.querySelectorAll('input[name="routineDays"]').forEach(input => {
+    input.checked = routineDays.has(Number(input.value));
+  });
+  newRoutineModal.showModal();
+}
+
+document.getElementById('toggleNewRoutineFormBtn').addEventListener('click', () => openNewRoutineModal());
+const closeNewRoutineModal = () => {
+  newRoutineModal.close();
+};
+document.getElementById('closeNewRoutineModalBtn').addEventListener('click', closeNewRoutineModal);
+cancelNewRoutineBtn.addEventListener('click', () => {
+  if (routineEntryDate) {
+    newRoutineForm.reset();
+    return;
+  }
+  closeNewRoutineModal();
+});
+newRoutineModal.addEventListener('close', () => {
+  newRoutineForm.reset();
+  routineEntryDate = null;
+  editingRoutineId = null;
+  if (appState) renderAll();
 });
 
 newRoutineForm.addEventListener('submit', function (e) {
   e.preventDefault();
+  if (routineEntryDate && isFutureDate(routineEntryDate)) {
+    showToast('No puedes registrar actividad en una fecha futura.', 'warn');
+    return;
+  }
+
   const name = document.getElementById('routineNameInput').value.trim();
   const warmup = document.getElementById('routineWarmupInput').value.trim();
   const main = document.getElementById('routineMainInput').value.trim();
   const cooldown = document.getElementById('routineCooldownInput').value.trim();
+  const entryDate = routineEntryDate;
   const days = [...newRoutineForm.querySelectorAll('input[name="routineDays"]:checked')]
     .map(input => Number(input.value));
 
   if (!name || !warmup || !main || !cooldown) return;
+
+  if (editingRoutineId) {
+    const routine = appState.routines.find(item => item.id === editingRoutineId);
+    if (!routine) {
+      showToast('No se encontró la rutina que quieres editar.', 'warn');
+      return;
+    }
+
+    Object.assign(routine, { name, warmup, main, cooldown, days });
+    saveState(appState);
+    newRoutineModal.close();
+    showToast('Rutina actualizada');
+    return;
+  }
 
   const newRut = {
     id: 'rut-' + Date.now(),
@@ -514,17 +698,27 @@ newRoutineForm.addEventListener('submit', function (e) {
     warmup,
     main,
     cooldown,
-    days
+    days: entryDate ? [] : days,
+    ...(entryDate ? { date: entryDate } : {})
   };
 
   appState.routines.push(newRut);
-  appState.selectedRoutineId = newRut.id;
+  if (entryDate) {
+    appState.activityLog = appState.activityLog || {};
+    appState.activityLog[entryDate] = [...new Set([...getCompletedRoutineIds(entryDate), newRut.id])];
+    if (!appState.completedActivityDates.includes(entryDate)) {
+      appState.completedActivityDates.push(entryDate);
+    }
+    recordRoutineCompletion(entryDate, newRut);
+  } else {
+    appState.selectedRoutineId = newRut.id;
+  }
   saveState(appState);
 
-  newRoutineForm.reset();
-  newRoutineForm.classList.add('hidden');
+  if (entryDate) newRoutineForm.reset();
+  else newRoutineModal.close();
   renderAll();
-  showToast('Nueva rutina agregada y seleccionada');
+  showToast(entryDate ? 'Entrenamiento registrado para ese día' : 'Nueva rutina agregada y seleccionada');
 });
 
 function toggleRoutineDay(id, day) {
@@ -781,11 +975,12 @@ function renderAll() {
   const monthlyStreak = getMonthlyStreakCount();
   const currentStreak = getCurrentStreak();
   const todayDay = now.getDay() || 7;
-  const scheduledToday = appState.routines.filter(routine => routine.days.includes(todayDay));
-  const storedSelection = appState.routines.find(r => r.id === appState.selectedRoutineId);
+  const savedRoutines = appState.routines.filter(routine => !routine.date);
+  const scheduledToday = savedRoutines.filter(routine => routine.days.includes(todayDay));
+  const storedSelection = savedRoutines.find(r => r.id === appState.selectedRoutineId);
   const selectedRoutine = scheduledToday.length
     ? scheduledToday.find(routine => routine.id === storedSelection?.id) || scheduledToday[0]
-    : storedSelection || appState.routines[0];
+    : storedSelection || savedRoutines[0];
   if (selectedRoutine && appState.selectedRoutineId !== selectedRoutine.id) {
     appState.selectedRoutineId = selectedRoutine.id;
     saveState(appState);
@@ -824,8 +1019,9 @@ function renderAll() {
   document.getElementById('summaryRoutineName').textContent = routineSummary;
   const badgeEl = document.getElementById('summaryActivityBadge');
 
-  badgeEl.textContent = `${completedTodayCount}/${scheduledToday.length}`;
-  if (completedTodayCount > 0 && completedTodayCount >= scheduledToday.length) {
+  const activityTotalToday = Math.max(scheduledToday.length, completedTodayCount);
+  badgeEl.textContent = `${completedTodayCount}/${activityTotalToday}`;
+  if (completedTodayCount > 0 && completedTodayCount >= activityTotalToday) {
     badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800';
   } else if (scheduledToday.length > 0) {
     badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800';
@@ -945,6 +1141,8 @@ function renderAll() {
     const dKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const count = getCompletedRoutineCount(dKey);
     const isToday = d === todayDateNum;
+    const isSelected = dKey === selectedCalendarDate;
+    const dayDate = parseDateKey(dKey);
 
     let cellClass = 'relative w-8 h-9 mx-auto rounded-lg flex items-center justify-center text-xs font-semibold transition ';
     if (count) {
@@ -954,37 +1152,63 @@ function renderAll() {
     } else {
       cellClass += 'bg-slate-50 text-slate-600';
     }
-    const titleAttr = count
-      ? ` title="${count} ${count === 1 ? 'rutina completada' : 'rutinas completadas'}"`
-      : '';
-    calHtml += `<div class="${cellClass}"${titleAttr}><span>${d}</span>${count > 1
+    if (isSelected) cellClass += ' ring-2 ring-brand-300 ring-offset-1';
+    const countLabel = `${count} ${count === 1 ? 'rutina completada' : 'rutinas completadas'}`;
+    const accessibleLabel = `${formatDisplayDate(dayDate)}${count ? `, ${countLabel}` : ''}`;
+    calHtml += `<button type="button" class="${cellClass}" data-calendar-date="${dKey}" aria-pressed="${isSelected}" aria-label="${accessibleLabel}" title="${accessibleLabel}"><span>${d}</span>${count > 1
       ? `<span class="absolute -top-1 -right-1 z-10 min-w-4 h-4 px-1 rounded-full bg-brand-100 text-brand-800 border border-brand-200 text-[9px] leading-none flex items-center justify-center">${count}</span>`
-      : ''}</div>`;
+      : ''}</button>`;
   }
   calGrid.innerHTML = calHtml;
 
-  // Rutinas de hoy y rutinas adicionales
-  document.getElementById('todayScheduledRoutines').textContent = scheduledToday.length
-    ? `${scheduledToday.length} ${scheduledToday.length === 1 ? 'rutina programada' : 'rutinas programadas'} para hoy.`
-    : 'No hay rutinas programadas para hoy.';
+  // Rutinas del día seleccionado y rutinas adicionales de hoy
+  const selectedDate = parseDateKey(selectedCalendarDate);
+  const selectedDateIsToday = selectedCalendarDate === getLocalDateKey(now);
+  const selectedDateIsFuture = isFutureDate(selectedCalendarDate, getLocalDateKey(now));
+  const selectedDateDay = selectedDate.getDay() || 7;
+  const scheduledSelectedDate = savedRoutines.filter(routine => routine.days.includes(selectedDateDay));
+  const completedRoutineIdsSelectedDate = getCompletedRoutineIds(selectedCalendarDate);
+  const oneTimeSelectedDate = appState.routines.filter(routine => routine.date === selectedCalendarDate);
+  const routinesForSelectedDate = [
+    ...scheduledSelectedDate,
+    ...oneTimeSelectedDate
+  ];
+
+  const selectedDateLabel = selectedDateIsToday ? 'Hoy' : formatDisplayDate(selectedDate);
+  document.getElementById('selectedRoutineDateLabel').textContent =
+    selectedDateLabel.charAt(0).toLocaleUpperCase('es-ES') + selectedDateLabel.slice(1);
+  document.getElementById('selectedRoutineDateTitle').textContent = scheduledSelectedDate.length
+    ? 'Rutinas programadas'
+    : 'Día sin rutina programada';
+  document.getElementById('todayScheduledRoutines').textContent = scheduledSelectedDate.length
+    ? `${scheduledSelectedDate.length} ${scheduledSelectedDate.length === 1 ? 'rutina programada' : 'rutinas programadas'} para este día.${selectedDateIsFuture ? ' Podrás marcarlas cuando llegue la fecha.' : ''}`
+    : '';
+  document.getElementById('noScheduledRoutineText').textContent = selectedDateIsFuture
+    ? 'No puedes registrar actividad en una fecha futura.'
+    : 'Descanso. Si entrenaste igual, registra tu entrenamiento y el día se marcará como completo.';
+  document.getElementById('noScheduledRoutineMessage').classList.toggle('hidden', scheduledSelectedDate.length > 0);
+  configureRoutineForm(scheduledSelectedDate.length === 0 && !selectedDateIsFuture, selectedCalendarDate);
 
   const todayRoutinesList = document.getElementById('todayRoutinesList');
-  todayRoutinesList.innerHTML = renderTodayRoutineCards(scheduledToday, completedRoutineIdsToday);
-  const otherRoutines = appState.routines.filter(routine =>
-    !scheduledToday.some(scheduledRoutine => scheduledRoutine.id === routine.id)
+  todayRoutinesList.innerHTML = renderTodayRoutineCards(
+    routinesForSelectedDate,
+    completedRoutineIdsSelectedDate,
+    selectedCalendarDate
   );
+  const routinesForSelectedDateIds = new Set(routinesForSelectedDate.map(routine => routine.id));
+  const otherRoutines = savedRoutines.filter(routine => !routinesForSelectedDateIds.has(routine.id));
   const otherRoutinesSection = document.getElementById('otherRoutinesSection');
   otherRoutinesSection.classList.toggle('hidden', otherRoutines.length === 0);
   document.getElementById('otherRoutinesCount').textContent = otherRoutines.length;
   document.getElementById('otherRoutinesList').innerHTML =
-    renderTodayRoutineCards(otherRoutines, completedRoutineIdsToday);
+    renderTodayRoutineCards(otherRoutines, completedRoutineIdsSelectedDate, selectedCalendarDate);
 
   // Lista de rutinas guardadas
   const routinesList = document.getElementById('routinesListContainer');
   const expandedRoutineIds = new Set(
     [...routinesList.querySelectorAll('details[data-routine-id][open]')].map(details => details.dataset.routineId)
   );
-  routinesList.innerHTML = appState.routines.map(r => {
+  routinesList.innerHTML = savedRoutines.map(r => {
     const isActive = r.id === selectedRoutine?.id;
     return `
       <article class="rounded-2xl border ${isActive ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200/80 bg-slate-50/60'} p-3.5 space-y-3">
@@ -993,6 +1217,9 @@ function renderAll() {
             <h4 class="truncate text-xs font-bold text-slate-900">${r.name}</h4>
           </div>
           <div class="flex shrink-0 items-center gap-1">
+            <button type="button" onclick="openEditRoutineModal('${r.id}')" title="Editar rutina"
+              aria-label="Editar ${r.name}"
+              class="px-2 py-1 rounded-lg text-[10px] font-semibold text-brand-700 hover:bg-brand-100 transition">Editar</button>
             <button type="button" onclick="deleteRoutine('${r.id}')" title="Eliminar rutina"
               class="p-1 text-slate-400 hover:text-rose-600 text-xs font-bold">✕</button>
           </div>
@@ -1035,7 +1262,56 @@ function renderAll() {
       </article>`;
   }).join('');
 
+  renderExerciseHistory();
   updateNotificationStatusUI();
+}
+
+function renderExerciseHistory() {
+  const historyList = document.getElementById('exerciseHistoryList');
+  const history = [...(appState.activityHistory || [])].sort((a, b) =>
+    b.date.localeCompare(a.date) || (Date.parse(b.loggedAt) || 0) - (Date.parse(a.loggedAt) || 0)
+  );
+
+  if (!history.length) {
+    historyList.innerHTML = '<p class="text-xs text-slate-400 text-center py-3">Aún no hay ejercicios registrados.</p>';
+    return;
+  }
+
+  const entriesByDate = new Map();
+  history.forEach(entry => {
+    if (!entriesByDate.has(entry.date)) entriesByDate.set(entry.date, []);
+    entriesByDate.get(entry.date).push(entry);
+  });
+
+  const groupedHistory = [...entriesByDate.entries()];
+  const renderHistoryGroups = groups => groups.map(([date, entries]) => `
+      <article class="p-3 rounded-2xl bg-slate-50 border border-slate-200/70">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-slate-800">${formatHealthRecordDate(date)}</span>
+          <span class="text-[10px] font-semibold text-slate-500">${entries.length} ${entries.length === 1 ? 'rutina' : 'rutinas'}</span>
+        </div>
+        <div class="mt-2 space-y-1.5">
+          ${entries.map(entry => `
+            <div class="flex items-start justify-between gap-3 text-[11px]">
+              <span class="min-w-0 break-words text-slate-700">${entry.routineName}</span>
+              <span class="shrink-0 text-slate-500">${formatActivityLoggedTime(entry.loggedAt)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </article>
+    `).join('');
+
+  const recentHistory = groupedHistory.slice(0, 3);
+  const olderHistory = groupedHistory.slice(3);
+  historyList.innerHTML = `
+    ${renderHistoryGroups(recentHistory)}
+    ${olderHistory.length ? `
+      <details class="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <summary class="cursor-pointer text-xs font-semibold text-brand-700">Ver más (${olderHistory.length})</summary>
+        <div class="mt-2.5 space-y-2.5">${renderHistoryGroups(olderHistory)}</div>
+      </details>
+    ` : ''}
+  `;
 }
 
 function applySexFromData() {
@@ -1053,7 +1329,7 @@ function showAppVersion(version) {
 }
 
 function renderRoutineItems(items) {
-  return items.split(',').map(item => item.trim()).filter(Boolean)
+  return items.split(/[,\r\n]+/).map(item => item.trim()).filter(Boolean)
     .map(item => `<li>${item}</li>`).join('');
 }
 
@@ -1094,21 +1370,24 @@ function getActivityRoutineSummary(completedRoutineIds, routines, fallbackRoutin
   return `${completedRoutines.map(getRoutineDisplayName).join(', ')}: ${durationSummary}`;
 }
 
-function renderTodayRoutineCards(routines, completedRoutineIds) {
+function renderTodayRoutineCards(routines, completedRoutineIds, dateKey = getLocalDateKey()) {
+  const dateIsFuture = isFutureDate(dateKey);
   return routines.map(routine => {
     const isComplete = completedRoutineIds.includes(routine.id);
     return `
       <article class="rounded-2xl border transition-colors ${isComplete ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50/60'} p-3.5 space-y-3">
         <div class="flex items-center justify-between gap-3">
           <h3 class="text-sm font-bold text-slate-900">${routine.name}</h3>
-          <label class="inline-flex items-center gap-2 shrink-0 cursor-pointer">
-            <input type="checkbox" ${isComplete ? 'checked' : ''}
-              onchange="toggleRoutineActivity('${routine.id}')"
-              aria-label="${isComplete ? 'Desmarcar' : 'Marcar'} ${routine.name} como completada"
-              class="peer sr-only">
-            <span aria-hidden="true"
-              class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-white text-xs font-bold text-white transition peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">${isComplete ? '✓' : ''}</span>
-          </label>
+          ${dateIsFuture ? '' : `
+            <label class="inline-flex items-center gap-2 shrink-0 cursor-pointer">
+              <input type="checkbox" ${isComplete ? 'checked' : ''}
+                onchange="toggleRoutineActivity('${routine.id}', '${dateKey}')"
+                aria-label="${isComplete ? 'Desmarcar' : 'Marcar'} ${routine.name} como completada"
+                class="peer sr-only">
+              <span aria-hidden="true"
+                class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-white text-xs font-bold text-white transition peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">${isComplete ? '✓' : ''}</span>
+            </label>
+          `}
         </div>
         <div class="space-y-2 border-t border-slate-200/70 pt-3">
           <div>
@@ -1133,11 +1412,14 @@ function renderTodayRoutineCards(routines, completedRoutineIds) {
 // -----------------------------------------------------------
 async function initApp() {
   try {
-    const config = await fetchJSON('data/config.json');
+    const [config, activityData] = await Promise.all([
+      fetchJSON('data/config.json'),
+      fetchJSON('data/activity.json')
+    ]);
     STORAGE_KEY = config.storageKey || STORAGE_KEY;
     WATER_CAP_ML = config.waterCapMl || WATER_CAP_ML;
     showAppVersion(config.version);
-    appState = await loadState();
+    appState = await loadState(activityData);
     applySexFromData();
     renderAll();
   } catch (err) {
