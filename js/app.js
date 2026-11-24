@@ -1027,17 +1027,16 @@ function renderAll() {
     ? '¡Meta diaria alcanzada!'
     : `Faltan ${remaining} ml para el tope`;
 
-  const routineSummary = getActivityRoutineSummary(
-    completedRoutineIdsToday,
-    appState.routines,
-    selectedRoutine
-  );
-  document.getElementById('summaryRoutineName').textContent = routineSummary;
+  document.getElementById('summaryRoutineName').textContent = 'Rutinas realizadas';
   const badgeEl = document.getElementById('summaryActivityBadge');
 
   const activityTotalToday = Math.max(scheduledToday.length, completedTodayCount);
   badgeEl.textContent = `${completedTodayCount}/${activityTotalToday}`;
-  if (completedTodayCount > 0 && completedTodayCount >= activityTotalToday) {
+  if (scheduledToday.length > 1 && completedTodayCount > 0) {
+    badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800';
+  } else if (scheduledToday.length > 1) {
+    badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800';
+  } else if (completedTodayCount > 0 && completedTodayCount >= activityTotalToday) {
     badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800';
   } else if (scheduledToday.length > 0) {
     badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800';
@@ -1403,43 +1402,6 @@ function showAppVersion(version) {
 function renderRoutineItems(items) {
   return items.split(/[,\r\n]+/).map(item => item.trim()).filter(Boolean)
     .map(item => `<li>${item}</li>`).join('');
-}
-
-function getRoutineDurationMinutes(routine) {
-  const match = routine.name.match(/(\d+(?:[.,]\d+)?)\s*(min(?:utos?)?|m|h(?:oras?)?)/i);
-  if (!match) return null;
-  const amount = Number(match[1].replace(',', '.'));
-  return /^h/i.test(match[2]) ? amount * 60 : amount;
-}
-
-function getRoutineDisplayName(routine) {
-  return routine.name
-    .replace(/\s*\(?\s*~?\d+(?:[.,]\d+)?\s*(?:min(?:utos?)?|m|h(?:oras?)?)\s*\)?/i, '')
-    .trim();
-}
-
-function formatRoutineDuration(minutes) {
-  const totalMinutes = Math.round(minutes);
-  const hours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
-  if (!hours) return `${totalMinutes} min`;
-  return remainingMinutes ? `${hours} h ${remainingMinutes} min` : `${hours} h`;
-}
-
-function getActivityRoutineSummary(completedRoutineIds, routines, fallbackRoutine) {
-  const completedRoutines = completedRoutineIds
-    .map(id => routines.find(routine => routine.id === id))
-    .filter(Boolean);
-  if (completedRoutines.length < 2) return fallbackRoutine ? fallbackRoutine.name : 'Sin rutina';
-
-  const durations = completedRoutines.map(getRoutineDurationMinutes);
-  const totalMinutes = durations.reduce((total, duration) => total + (duration || 0), 0);
-  const missingDurations = durations.filter(duration => duration === null).length;
-  const durationSummary = totalMinutes
-    ? `(~${formatRoutineDuration(totalMinutes)}${missingDurations ? `; ${missingDurations} sin estimar` : ''})`
-    : '(tiempo sin estimar)';
-
-  return `${completedRoutines.map(getRoutineDisplayName).join(', ')}: ${durationSummary}`;
 }
 
 function renderTodayRoutineCards(routines, completedRoutineIds, dateKey = getLocalDateKey()) {
