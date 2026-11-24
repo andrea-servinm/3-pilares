@@ -28,6 +28,11 @@ function formatDisplayDate(dateObj = new Date()) {
   });
 }
 
+function formatHealthRecordDate(dateKey) {
+  const [year, month, day] = dateKey.split('-');
+  return year && month && day ? `${day}/${month}/${year}` : dateKey;
+}
+
 // Carga un JSON desde /data
 async function fetchJSON(path) {
   const res = await fetch(path);
@@ -82,7 +87,7 @@ async function createInitialState() {
   const healthRecords = health.records.map(({ monthsAgo, ...rec }) => {
     const d = new Date(today);
     d.setMonth(today.getMonth() - (monthsAgo || 0));
-    return { ...rec, date: getLocalDateKey(d) };
+    return recalculateHealthRecord({ ...rec, date: getLocalDateKey(d) });
   });
 
   return {
@@ -108,6 +113,7 @@ async function loadState() {
       return initial;
     }
     const parsed = JSON.parse(raw);
+    parsed.healthRecords = (parsed.healthRecords || []).map(recalculateHealthRecord);
     parsed.activityLog = Object.fromEntries(
       Object.entries(parsed.activityLog || {}).map(([date, routineIds]) => [
         date,
@@ -207,36 +213,26 @@ function calculateBodyMetrics(sex, heightCm, weightKg, waistCm, hipCm) {
   const ica = waistCm / heightCm;
 
   // Clasificación orientativa de IMC
-  let imcCategory = 'Normopeso';
+  let imcCategory = 'Normal';
   if (imc < 18.5) imcCategory = 'Bajo peso';
   else if (imc >= 25 && imc < 30) imcCategory = 'Sobrepeso';
   else if (imc >= 30) imcCategory = 'Obesidad';
 
-  // Umbrales orientativos OMS para ICC y estándar ICA (0.50)
-  const iccThreshold = sex === 'M' ? 0.90 : 0.85;
-  const highIcc = icc >= iccThreshold;
+  const highIcc = sex === 'M' ? icc >= 1.0 : icc > 0.85;
   const highIca = ica >= 0.50;
   const veryHighIca = ica >= 0.60;
+  const highImc = imc >= 30;
+  const increasedRisk = imc >= 25 || highIca;
 
-  let riskLevel = 'Riesgo Bajo';
+  let riskLevel = 'Bajo';
   let riskBadgeClass = 'bg-emerald-100 text-emerald-800';
-  let explanation = 'Tus proporciones cintura-altura (ICA < 0.50) y cintura-cadera se ubican en rango saludable.';
 
-  let riskPoints = 0;
-  if (imc >= 25) riskPoints += 1;
-  if (imc >= 30) riskPoints += 1;
-  if (highIcc) riskPoints += 1;
-  if (highIca) riskPoints += 1;
-  if (veryHighIca) riskPoints += 1;
-
-  if (riskPoints >= 3) {
-    riskLevel = 'Riesgo Elevado';
+  if (highImc || highIcc || veryHighIca) {
+    riskLevel = 'Alto';
     riskBadgeClass = 'bg-rose-100 text-rose-800';
-    explanation = 'Adiposidad central elevada según ICA/ICC e IMC. Se sugiere seguimiento constante de hábitos y consulta preventiva.';
-  } else if (riskPoints >= 1) {
-    riskLevel = 'Riesgo Moderado';
+  } else if (increasedRisk) {
+    riskLevel = 'Aumentado';
     riskBadgeClass = 'bg-amber-100 text-amber-800';
-    explanation = 'Al menos un indicador (IMC, ICC o ICA) supera el umbral óptimo. Mantener actividad regular e hidratación ayudará a mejorarlo.';
   }
 
   return {
@@ -244,13 +240,33 @@ function calculateBodyMetrics(sex, heightCm, weightKg, waistCm, hipCm) {
     icc: Number(icc.toFixed(2)),
     ica: Number(ica.toFixed(2)),
     imcCategory,
-    iccStatus: highIcc ? 'Elevado' : 'Óptimo',
-    icaStatus: highIca ? 'Elevado' : 'Óptimo',
+    iccStatus: highIcc ? 'Alto' : 'Óptimo',
+    icaStatus: veryHighIca ? 'Alto' : highIca ? 'Riesgo aumentado' : 'Óptimo',
     riskLevel,
-    riskBadgeClass,
-    explanation
+    riskBadgeClass
   };
 }
+
+function recalculateHealthRecord(record) {
+  const measurements = [record.height, record.weight, record.waist, record.hip];
+  if (!['M', 'F'].includes(record.sex) ||
+    !measurements.every(value => Number.isFinite(value) && value > 0)) {
+    return record;
+  }
+
+  return {
+    ...record,
+    ...calculateBodyMetrics(record.sex, record.height, record.weight, record.waist, record.hip)
+  };
+}
+
+const healthMetricsModal = document.getElementById('healthMetricsModal');
+document.getElementById('openHealthMetricsModalBtn').addEventListener('click', () => {
+  healthMetricsModal.showModal();
+});
+document.getElementById('closeHealthMetricsModalBtn').addEventListener('click', () => {
+  healthMetricsModal.close();
+});
 
 document.getElementById('healthMetricsForm').addEventListener('submit', function (e) {
   e.preventDefault();
@@ -277,6 +293,7 @@ document.getElementById('healthMetricsForm').addEventListener('submit', function
   appState.healthRecords.unshift(record);
   saveState(appState);
   renderAll();
+  healthMetricsModal.close();
   showToast('Chequeo mensual calculado y guardado');
 });
 
@@ -779,9 +796,10 @@ function renderAll() {
 
   // --- RENDER PESTAÑA RESUMEN ---
   const dailyScore = Math.round((waterPct * 0.5) + (activityDone ? 50 : 0));
-  document.getElementById('summaryScoreBadge').textContent = `${dailyScore}%`;
+  document.getElementById('heroWaterPercent').textContent = `${waterPct}%`;
   document.getElementById('heroWaterText').textContent = `${waterToday} / ${WATER_CAP_ML} ml`;
   document.getElementById('heroActivityText').textContent = activityDone ? 'Completada ✓' : 'Pendiente';
+  document.getElementById('heroCurrentStreak').textContent = currentStreak;
 
   if (dailyScore === 100) {
     document.getElementById('summaryMotivation').textContent = '¡Objetivo del día 100% cumplido! Excelente constancia.';
@@ -798,11 +816,12 @@ function renderAll() {
     ? '¡Meta diaria alcanzada!'
     : `Faltan ${remaining} ml para el tope`;
 
-  document.getElementById('summaryRoutineName').textContent = getActivityRoutineSummary(
+  const routineSummary = getActivityRoutineSummary(
     completedRoutineIdsToday,
     appState.routines,
     selectedRoutine
   );
+  document.getElementById('summaryRoutineName').textContent = routineSummary;
   const badgeEl = document.getElementById('summaryActivityBadge');
 
   badgeEl.textContent = `${completedTodayCount}/${scheduledToday.length}`;
@@ -817,8 +836,13 @@ function renderAll() {
   document.getElementById('summaryCurrentStreak').textContent = currentStreak;
   document.getElementById('summaryWeeklyStreak').textContent = weeklyStreak;
 
+  const heroHealthRiskBadge = document.getElementById('heroHealthRiskBadge');
   if (latestHealth) {
-    document.getElementById('summaryLastCheckDate').textContent = `Registrado el ${latestHealth.date}`;
+    heroHealthRiskBadge.textContent = latestHealth.riskLevel;
+    heroHealthRiskBadge.className =
+      `shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${latestHealth.riskBadgeClass}`;
+    document.getElementById('summaryLastCheckDate').textContent =
+      `Registrado el ${formatHealthRecordDate(latestHealth.date)}`;
     const riskBadge = document.getElementById('summaryRiskBadge');
     riskBadge.textContent = latestHealth.riskLevel;
     riskBadge.className = `px-2.5 py-1 rounded-full text-xs font-bold ${latestHealth.riskBadgeClass}`;
@@ -828,6 +852,8 @@ function renderAll() {
     document.getElementById('summaryIccVal').textContent = latestHealth.icc;
     document.getElementById('summaryIcaVal').textContent = latestHealth.ica;
   } else {
+    heroHealthRiskBadge.textContent = 'Sin datos';
+    heroHealthRiskBadge.className = 'shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold';
     document.getElementById('summaryLastCheckDate').textContent = 'Sin registros aún';
     document.getElementById('summaryRiskBadge').textContent = 'Sin datos';
     document.getElementById('summaryImcVal').textContent = '--';
@@ -848,14 +874,22 @@ function renderAll() {
     hTag.textContent = latestHealth.riskLevel;
     hTag.className = `px-2.5 py-0.5 rounded-full text-xs font-bold ${latestHealth.riskBadgeClass}`;
 
-    document.getElementById('resImc').textContent = latestHealth.imc;
-    document.getElementById('resImcLabel').textContent = latestHealth.imcCategory;
-    document.getElementById('resIcc').textContent = latestHealth.icc;
-    document.getElementById('resIccLabel').textContent = latestHealth.iccStatus;
-    document.getElementById('resIca').textContent = latestHealth.ica;
-    document.getElementById('resIcaLabel').textContent = latestHealth.icaStatus;
-    document.getElementById('resRiskExplanation').textContent = latestHealth.explanation;
+    const imcColorClass = latestHealth.imcCategory === 'Normal' ? 'text-emerald-700' : 'text-rose-700';
+    const iccColorClass = latestHealth.iccStatus === 'Óptimo' ? 'text-emerald-700' : 'text-rose-700';
+    const icaColorClass = latestHealth.icaStatus === 'Óptimo' ? 'text-emerald-700' : 'text-rose-700';
 
+    document.getElementById('resImc').className = `text-base font-extrabold ${imcColorClass}`;
+    document.getElementById('resImc').textContent = latestHealth.imc;
+    document.getElementById('resImcLabel').className = `text-[10px] ${imcColorClass}`;
+    document.getElementById('resImcLabel').textContent = latestHealth.imcCategory;
+    document.getElementById('resIcc').className = `text-base font-extrabold ${iccColorClass}`;
+    document.getElementById('resIcc').textContent = latestHealth.icc;
+    document.getElementById('resIccLabel').className = `text-[10px] ${iccColorClass}`;
+    document.getElementById('resIccLabel').textContent = latestHealth.iccStatus;
+    document.getElementById('resIca').className = `text-base font-extrabold ${icaColorClass}`;
+    document.getElementById('resIca').textContent = latestHealth.ica;
+    document.getElementById('resIcaLabel').className = `text-[10px] ${icaColorClass}`;
+    document.getElementById('resIcaLabel').textContent = latestHealth.icaStatus;
     // Prellenar altura si el formulario está vacío para comodidad
     const hInput = document.getElementById('inputHeight');
     if (!hInput.value) hInput.value = latestHealth.height;
@@ -871,7 +905,7 @@ function renderAll() {
           <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2">
             <div>
               <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-slate-800">${rec.date}</span>
+                <span class="text-xs font-bold text-slate-800">${formatHealthRecordDate(rec.date)}</span>
                 <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${rec.riskBadgeClass}">${rec.riskLevel}</span>
               </div>
               <div class="text-[11px] text-slate-500 mt-1">
@@ -966,13 +1000,13 @@ function renderAll() {
         <div>
           <div class="flex flex-wrap gap-1">
             ${WEEK_DAYS.map(day => {
-        const active = r.days.includes(day.value);
-        return `<button type="button" onclick="toggleRoutineDay('${r.id}', ${day.value})"
+      const active = r.days.includes(day.value);
+      return `<button type="button" onclick="toggleRoutineDay('${r.id}', ${day.value})"
                   aria-pressed="${active}" aria-label="${active ? 'Quitar' : 'Programar'} ${day.label} para ${r.name}"
                   class="px-2 py-1 rounded-lg text-[10px] font-semibold transition ${active
-            ? 'bg-brand-600 text-white'
-            : 'bg-white border border-slate-200 text-slate-500 hover:bg-brand-50'}">${day.label}</button>`;
-      }).join('')}
+          ? 'bg-brand-600 text-white'
+          : 'bg-white border border-slate-200 text-slate-500 hover:bg-brand-50'}">${day.label}</button>`;
+    }).join('')}
           </div>
         </div>
         <details data-routine-id="${r.id}" ${expandedRoutineIds.has(r.id) ? 'open' : ''}

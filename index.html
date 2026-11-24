@@ -98,30 +98,42 @@
         <!-- Tarjeta Bienvenida / Estado General del Día -->
         <div
           class="bg-gradient-to-br from-brand-700 via-brand-600 to-water-600 rounded-3xl p-5 lg:p-6 text-white shadow-md">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
             <div>
               <span
                 class="inline-block px-2.5 py-0.5 rounded-full bg-white/20 text-[11px] font-semibold tracking-wide uppercase">Panel
                 del Día</span>
-              <h2 class="text-xl lg:text-2xl font-bold mt-1.5">Tu progreso de hoy</h2>
+              <h2 class="text-xxl lg:text-2xl font-bold mt-1.5">Tu progreso de hoy</h2>
               <p id="summaryMotivation" class="text-xs lg:text-sm text-brand-50/90 mt-0.5">Mantén el ritmo constante
                 paso a paso.</p>
             </div>
-            <div class="flex sm:block items-baseline justify-between sm:text-right">
-              <div id="summaryScoreBadge" class="text-2xl lg:text-3xl font-extrabold">0%</div>
-              <div class="text-[11px] text-brand-100">Meta diaria</div>
-            </div>
           </div>
 
-          <!-- Mini barras rápidas en el header card -->
+          <!-- Indicadores del día -->
           <div class="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-white/15">
             <div class="bg-white/10 rounded-2xl p-3">
-              <div class="text-[11px] text-brand-100">Hidratación</div>
-              <div id="heroWaterText" class="text-sm lg:text-base font-bold mt-0.5">0 / 2500 ml</div>
+              <div id="heroWaterPercent" class="text-xl lg:text-2xl font-extrabold mt-0.5">0%</div>
+              <div class="text-[11px] text-brand-100">Agua ingerida</div>
             </div>
             <div class="bg-white/10 rounded-2xl p-3">
+              <div id="heroWaterText" class="text-xl lg:text-base font-bold mt-0.5">0 / 2500 ml</div>
+              <div class="text-[11px] text-brand-100">Hidratación</div>
+            </div>
+            <div class="bg-white/10 rounded-2xl p-3">
+              <div class="flex items-baseline gap-1 mt-0.5">
+                <span id="heroCurrentStreak" class="text-xl lg:text-2xl font-extrabold">0</span>
+                <span class="text-xs font-semibold text-brand-100">días</span>
+              </div>
+              <div class="text-[11px] text-brand-100">Racha actual de actividad</div>
+            </div>
+            <div class="bg-white/10 rounded-2xl p-3">
+              <div id="heroActivityText" class="text-xl lg:text-base font-bold mt-0.5">Pendiente</div>
               <div class="text-[11px] text-brand-100">Rutina de hoy</div>
-              <div id="heroActivityText" class="text-sm lg:text-base font-bold mt-0.5">Pendiente</div>
+            </div>
+            <div class="col-span-2 bg-white/10 rounded-2xl p-3 flex items-center justify-between gap-3">
+              <div class="text-[11px] text-brand-100">Riesgo cardiometabólico</div>
+              <span id="heroHealthRiskBadge"
+                class="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold">Sin datos</span>
             </div>
           </div>
         </div>
@@ -158,9 +170,9 @@
 
             <div class="flex items-center justify-between gap-2 pt-1">
               <span id="summaryWaterRemaining" class="text-xs text-slate-500">Faltan 2500 ml</span>
-              <button type="button" onclick="addWater(250)"
+              <button type="button" onclick="addWater(350)"
                 class="px-4 py-2.5 min-h-[44px] rounded-2xl bg-water-600 hover:bg-water-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1">
-                <span>+ 250 ml</span>
+                <span>+ 350 ml</span>
               </button>
             </div>
           </div>
@@ -259,7 +271,7 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
 
-          <!-- Columna Izquierda: Control de Agua + Historial en Desktop -->
+          <!-- Control de Agua -->
           <div class="lg:col-span-5 space-y-4 lg:space-y-6">
 
             <!-- Bloque 1: Control de Ingesta de Agua (Tope 2500 ml) -->
@@ -310,6 +322,54 @@
               </div>
             </div>
 
+          </div>
+
+          <!-- Evaluación mensual e historial -->
+          <div class="lg:col-span-7 space-y-4 lg:space-y-6">
+            <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-4">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Evaluación Mensual</span>
+                  <h2 class="text-lg font-bold text-slate-900">IMC, ICC, ICA y Riesgo</h2>
+                  <p class="text-xs text-slate-500 mt-0.5">Registra tus medidas una vez al mes para calcular tus indicadores.</p>
+                </div>
+                <button type="button" id="openHealthMetricsModalBtn"
+                  class="shrink-0 px-4 py-2.5 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm transition">
+                  Registrar medidas
+                </button>
+              </div>
+
+              <!-- Resultado Destacado del Último Cálculo -->
+              <div id="latestHealthResultCard" class="rounded-2xl bg-slate-50 border border-slate-200/80 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-slate-700">Riesgo metabólico y cardiovascular</span>
+                  <span id="healthRiskTag"
+                    class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Sin datos</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2.5 text-center">
+                  <div class="bg-white p-2.5 rounded-xl border border-slate-100">
+                    <div class="text-[10px] text-slate-400 font-semibold">IMC</div>
+                    <div id="resImc" class="text-base font-extrabold text-slate-900">--</div>
+                    <div id="resImcLabel" class="text-[10px] text-slate-500">--</div>
+                  </div>
+                  <div class="bg-white p-2.5 rounded-xl border border-slate-100">
+                    <div class="text-[10px] text-slate-400 font-semibold">ICC</div>
+                    <div id="resIcc" class="text-base font-extrabold text-slate-900">--</div>
+                    <div id="resIccLabel" class="text-[10px] text-slate-500">--</div>
+                  </div>
+                  <div class="bg-white p-2.5 rounded-xl border border-slate-100">
+                    <div class="text-[10px] text-slate-400 font-semibold">ICA</div>
+                    <div id="resIca" class="text-base font-extrabold text-slate-900">--</div>
+                    <div id="resIcaLabel" class="text-[10px] text-slate-500">--</div>
+                  </div>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                    IMC = peso/altura² (OMS). ICA = cintura/altura (≥0,5: riesgo aumentado; ≥0,6: alto).
+                    ICC = cintura/cadera (mujer: &gt;0,85; hombre: ≥1,0: alto). Es orientativo, no un diagnóstico.
+                  </p>
+              </div>
+            </div>
+
             <!-- Historial Mensual -->
             <div class="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-3">
               <h3 class="text-sm font-bold text-slate-800">Historial de Mediciones</h3>
@@ -318,96 +378,70 @@
               </div>
             </div>
 
-          </div>
+            <dialog id="healthMetricsModal"
+              class="w-[calc(100%-2rem)] max-w-xl max-h-[90vh] overflow-y-auto p-0 rounded-3xl bg-white shadow-2xl backdrop:bg-slate-950/50">
+              <div class="p-5 lg:p-6 space-y-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Evaluación Mensual</span>
+                    <h2 class="text-lg font-bold text-slate-900">Ingresa tus medidas</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Completa los valores para calcular tus indicadores.</p>
+                  </div>
+                  <button type="button" id="closeHealthMetricsModalBtn" aria-label="Cerrar"
+                    class="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">✕</button>
+                </div>
 
-          <!-- Columna Derecha: Chequeo Mensual Antropométrico -->
-          <div class="lg:col-span-7 bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200/70 space-y-4">
-            <div>
-              <span class="text-[11px] font-bold uppercase tracking-wider text-brand-600">Evaluación Mensual</span>
-              <h2 class="text-lg font-bold text-slate-900">IMC, ICC, ICA y Riesgo</h2>
-              <p class="text-xs text-slate-500 mt-0.5">Ingresa tus medidas una vez al mes para calcular tus indicadores.
-              </p>
-            </div>
-
-            <form id="healthMetricsForm" class="space-y-3.5">
-              <!-- Selector Sexo Biológico de Referencia para ICC -->
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Sexo de referencia (para umbral
-                  ICC)</label>
-                <div class="grid grid-cols-2 gap-2.5">
-                  <label class="cursor-pointer">
-                    <input type="radio" name="bioSex" value="M" class="peer sr-only">
-                    <div
-                      class="text-center py-2.5 px-3 min-h-[44px] flex items-center justify-center rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600 transition">
-                      Hombre
+                <form id="healthMetricsForm" class="space-y-3.5">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">Sexo de referencia (para umbral ICC)</label>
+                    <div class="grid grid-cols-2 gap-2.5">
+                      <label class="cursor-pointer">
+                        <input type="radio" name="bioSex" value="M" required class="peer sr-only">
+                        <div
+                          class="text-center py-2.5 px-3 min-h-[44px] flex items-center justify-center rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600 transition">
+                          Hombre
+                        </div>
+                      </label>
+                      <label class="cursor-pointer">
+                        <input type="radio" name="bioSex" value="F" class="peer sr-only">
+                        <div
+                          class="text-center py-2.5 px-3 min-h-[44px] flex items-center justify-center rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600 transition">
+                          Mujer
+                        </div>
+                      </label>
                     </div>
-                  </label>
-                  <label class="cursor-pointer">
-                    <input type="radio" name="bioSex" value="F" class="peer sr-only">
-                    <div
-                      class="text-center py-2.5 px-3 min-h-[44px] flex items-center justify-center rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600 transition">
-                      Mujer
+                  </div>
+
+                  <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3">
+                    <div>
+                      <label for="inputHeight" class="block text-xs font-semibold text-slate-700 mb-1">Altura (cm)</label>
+                      <input id="inputHeight" type="number" step="0.1" min="100" max="250" required placeholder="Ej. 172"
+                        class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
                     </div>
-                  </label>
-                </div>
-              </div>
+                    <div>
+                      <label for="inputWeight" class="block text-xs font-semibold text-slate-700 mb-1">Peso (kg)</label>
+                      <input id="inputWeight" type="number" step="0.1" min="30" max="300" required placeholder="Ej. 74.5"
+                        class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                      <label for="inputWaist" class="block text-xs font-semibold text-slate-700 mb-1">Cintura (cm)</label>
+                      <input id="inputWaist" type="number" step="0.1" min="40" max="200" required placeholder="Ej. 84"
+                        class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                      <label for="inputHip" class="block text-xs font-semibold text-slate-700 mb-1">Cadera (cm)</label>
+                      <input id="inputHip" type="number" step="0.1" min="50" max="220" required placeholder="Ej. 98"
+                        class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                  </div>
 
-              <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3">
-                <div>
-                  <label for="inputHeight" class="block text-xs font-semibold text-slate-700 mb-1">Altura (cm)</label>
-                  <input id="inputHeight" type="number" step="0.1" min="100" max="250" required placeholder="Ej. 172"
-                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
-                <div>
-                  <label for="inputWeight" class="block text-xs font-semibold text-slate-700 mb-1">Peso (kg)</label>
-                  <input id="inputWeight" type="number" step="0.1" min="30" max="300" required placeholder="Ej. 74.5"
-                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
-                <div>
-                  <label for="inputWaist" class="block text-xs font-semibold text-slate-700 mb-1">Cintura (cm)</label>
-                  <input id="inputWaist" type="number" step="0.1" min="40" max="200" required placeholder="Ej. 84"
-                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
-                <div>
-                  <label for="inputHip" class="block text-xs font-semibold text-slate-700 mb-1">Cadera (cm)</label>
-                  <input id="inputHip" type="number" step="0.1" min="50" max="220" required placeholder="Ej. 98"
-                    class="w-full px-3.5 py-2.5 min-h-[44px] rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
-                </div>
+                  <button type="submit"
+                    class="w-full py-3 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold text-sm shadow-sm transition">
+                    Calcular y Guardar Registro Mensual
+                  </button>
+                </form>
               </div>
-
-              <button type="submit"
-                class="w-full py-3 min-h-[44px] rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold text-sm shadow-sm transition">
-                Calcular y Guardar Registro Mensual
-              </button>
-            </form>
-
-            <!-- Resultado Destacado del Último Cálculo -->
-            <div id="latestHealthResultCard" class="rounded-2xl bg-slate-50 border border-slate-200/80 p-4 space-y-3">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-700">Resultado actual</span>
-                <span id="healthRiskTag"
-                  class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Riesgo
-                  Bajo</span>
-              </div>
-              <div class="grid grid-cols-3 gap-2.5 text-center">
-                <div class="bg-white p-2.5 rounded-xl border border-slate-100">
-                  <div class="text-[10px] text-slate-400 font-semibold">IMC</div>
-                  <div id="resImc" class="text-base font-extrabold text-slate-900">--</div>
-                  <div id="resImcLabel" class="text-[10px] text-slate-500">--</div>
-                </div>
-                <div class="bg-white p-2.5 rounded-xl border border-slate-100">
-                  <div class="text-[10px] text-slate-400 font-semibold">ICC</div>
-                  <div id="resIcc" class="text-base font-extrabold text-slate-900">--</div>
-                  <div id="resIccLabel" class="text-[10px] text-slate-500">--</div>
-                </div>
-                <div class="bg-white p-2.5 rounded-xl border border-slate-100">
-                  <div class="text-[10px] text-slate-400 font-semibold">ICA</div>
-                  <div id="resIca" class="text-base font-extrabold text-slate-900">--</div>
-                  <div id="resIcaLabel" class="text-[10px] text-slate-500">--</div>
-                </div>
-              </div>
-              <p id="resRiskExplanation" class="text-[11px] text-slate-600 leading-relaxed"></p>
-            </div>
+            </dialog>
           </div>
 
         </div>

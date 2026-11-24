@@ -6,6 +6,9 @@ body {
   color: #0f172a;
   overflow-x: hidden;
 }
+dialog::backdrop {
+  background-color: rgb(15 23 42 / 50%);
+}
 /* Custom scrollbar subtle */
 ::-webkit-scrollbar {
   width: 4px;
