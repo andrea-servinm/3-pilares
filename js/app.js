@@ -310,6 +310,70 @@ function getWeeklyStreakCount() {
   return count;
 }
 
+// Convierte "AAAA-MM-DD" en Date local
+function parseDateKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Racha consecutiva actual (si hoy aún no se completa, cuenta desde ayer)
+function getCurrentStreak() {
+  const dates = new Set(appState.completedActivityDates);
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  if (!dates.has(getLocalDateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let count = 0;
+  while (dates.has(getLocalDateKey(cursor))) {
+    count++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return count;
+}
+
+// Mejor racha consecutiva histórica
+function getBestStreak() {
+  const days = [...new Set(appState.completedActivityDates)].sort();
+  let best = 0, run = 0, prev = null;
+  days.forEach(key => {
+    const cur = parseDateKey(key);
+    if (prev) {
+      const diff = Math.round((cur - prev) / 86400000);
+      run = diff === 1 ? run + 1 : 1;
+    } else {
+      run = 1;
+    }
+    best = Math.max(best, run);
+    prev = cur;
+  });
+  return best;
+}
+
+// Fila de la semana actual: L M X J V S D
+function renderWeekRow() {
+  const el = document.getElementById('weekRow');
+  if (!el) return;
+  const now = new Date();
+  const diffToMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+  const todayKey = getLocalDateKey(now);
+  const labels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+  el.innerHTML = labels.map((label, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const key = getLocalDateKey(d);
+    const done = appState.completedActivityDates.includes(key);
+    const isToday = key === todayKey;
+    let cls = 'w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border transition ';
+    if (done) cls += 'bg-brand-600 text-white border-brand-600';
+    else if (isToday) cls += 'bg-white text-brand-700 border-2 border-brand-500';
+    else cls += 'bg-white text-slate-500 border-slate-200';
+    return `<div class="${cls}">${label}</div>`;
+  }).join('');
+}
+
 // Calcula días cumplidos en el mes calendario actual
 function getMonthlyStreakCount() {
   const now = new Date();
@@ -319,6 +383,27 @@ function getMonthlyStreakCount() {
 
   return appState.completedActivityDates.filter(d => d.startsWith(prefix)).length;
 }
+
+// Selector de vista del calendario: 'week' (por defecto) o 'month'
+let calendarView = 'week';
+
+function setCalendarView(view) {
+  calendarView = view;
+  document.getElementById('calWeekView').classList.toggle('hidden', view !== 'week');
+  document.getElementById('calMonthView').classList.toggle('hidden', view !== 'month');
+  document.querySelectorAll('[data-cal-view]').forEach(btn => {
+    const active = btn.dataset.calView === view;
+    btn.classList.toggle('bg-white', active);
+    btn.classList.toggle('text-brand-700', active);
+    btn.classList.toggle('shadow-sm', active);
+    btn.classList.toggle('text-slate-500', !active);
+  });
+}
+
+document.querySelectorAll('[data-cal-view]').forEach(btn => {
+  btn.addEventListener('click', () => setCalendarView(btn.dataset.calView));
+});
+setCalendarView('week');
 
 // Selector de rutina del día
 document.getElementById('todayRoutineSelect').addEventListener('change', function (e) {
@@ -727,6 +812,9 @@ function renderAll() {
   // --- RENDER PESTAÑA ACTIVIDAD ---
   document.getElementById('actWeeklyCount').textContent = weeklyStreak;
   document.getElementById('actMonthlyCount').textContent = monthlyStreak;
+  document.getElementById('actStreakCurrent').textContent = getCurrentStreak();
+  document.getElementById('actStreakRecord').textContent = getBestStreak();
+  renderWeekRow();
   document.getElementById('calendarMonthTitle').textContent = now.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' });
 
   // Mini calendario del mes
@@ -747,7 +835,7 @@ function renderAll() {
     const done = appState.completedActivityDates.includes(dKey);
     const isToday = d === todayDateNum;
 
-    let cellClass = 'h-8 rounded-xl flex items-center justify-center text-xs font-semibold transition ';
+    let cellClass = 'w-8 h-8 mx-auto rounded-full flex items-center justify-center text-xs font-semibold transition ';
     if (done) {
       cellClass += 'bg-brand-600 text-white font-bold shadow-xs';
     } else if (isToday) {
