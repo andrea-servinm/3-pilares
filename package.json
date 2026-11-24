@@ -1,0 +1,11 @@
+{
+  "name": "3-pilares",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./css/styles.css -o ./css/styles.compiled.css --minify",
+    "build": "npm run build:css"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}
