@@ -3,6 +3,15 @@
 // -----------------------------------------------------------
 let STORAGE_KEY = 'mi_seguimiento_diario_v1';
 let WATER_CAP_ML = 2500;
+const WEEK_DAYS = [
+  { value: 1, label: 'L' },
+  { value: 2, label: 'M' },
+  { value: 3, label: 'Mi' },
+  { value: 4, label: 'J' },
+  { value: 5, label: 'V' },
+  { value: 6, label: 'S' },
+  { value: 7, label: 'D' }
+];
 
 function getLocalDateKey(dateObj = new Date()) {
   const y = dateObj.getFullYear();
@@ -40,7 +49,12 @@ async function createInitialState() {
   const todayKey = getLocalDateKey(today);
 
   const completedDates = [];
-  const activityLog = {}; // fecha -> id de rutina realizada
+  const activityLog = {};
+
+  function logRoutine(date, routineId) {
+    if (!routineId) return;
+    activityLog[date] = [...new Set([...(activityLog[date] || []), routineId])];
+  }
 
   // a) Relativos: "hace N días" (opcional)
   (activity.completedDaysAgo || []).forEach(entry => {
@@ -51,7 +65,7 @@ async function createInitialState() {
     if (!activity.onlyCurrentMonth || prev.getMonth() === today.getMonth()) {
       const key = getLocalDateKey(prev);
       completedDates.push(key);
-      if (routineId) activityLog[key] = routineId;
+      logRoutine(key, routineId);
     }
   });
 
@@ -62,7 +76,7 @@ async function createInitialState() {
     const routineId = typeof entry === 'object' ? entry.routineId : null;
     if (activity.onlyCurrentMonth && !date.startsWith(currentMonthPrefix)) return;
     if (!completedDates.includes(date)) completedDates.push(date);
-    if (routineId) activityLog[date] = routineId;
+    logRoutine(date, routineId);
   });
 
   const healthRecords = health.records.map(({ monthsAgo, ...rec }) => {
@@ -73,7 +87,10 @@ async function createInitialState() {
 
   return {
     waterLogs: { [todayKey]: water.todayInitialMl },
-    routines: routines.routines,
+    routines: routines.routines.map(routine => ({
+      ...routine,
+      days: Array.isArray(routine.days) ? routine.days : []
+    })),
     selectedRoutineId: routines.selectedRoutineId,
     completedActivityDates: completedDates,
     activityLog,
@@ -91,7 +108,16 @@ async function loadState() {
       return initial;
     }
     const parsed = JSON.parse(raw);
-    parsed.activityLog = parsed.activityLog || {};
+    parsed.activityLog = Object.fromEntries(
+      Object.entries(parsed.activityLog || {}).map(([date, routineIds]) => [
+        date,
+        Array.isArray(routineIds) ? [...new Set(routineIds.filter(Boolean))] : routineIds ? [routineIds] : []
+      ])
+    );
+    parsed.routines = parsed.routines.map(routine => ({
+      ...routine,
+      days: Array.isArray(routine.days) ? routine.days : []
+    }));
     return parsed;
   } catch (err) {
     console.error('Error cargando estado:', err);
@@ -269,19 +295,38 @@ function isTodayActivityDone() {
   return appState.completedActivityDates.includes(todayKey);
 }
 
-function toggleTodayActivity() {
-  const todayKey = getLocalDateKey();
-  const idx = appState.completedActivityDates.indexOf(todayKey);
-  appState.activityLog = appState.activityLog || {};
+function getCompletedRoutineIds(dateKey) {
+  const routineIds = (appState.activityLog || {})[dateKey];
+  return Array.isArray(routineIds) ? routineIds : routineIds ? [routineIds] : [];
+}
 
-  if (idx === -1) {
-    appState.completedActivityDates.push(todayKey);
-    appState.activityLog[todayKey] = appState.selectedRoutineId;   // <-- nueva
-    showToast('¡Rutina del día marcada como completada! 🔥');
-  } else {
-    appState.completedActivityDates.splice(idx, 1);
-    delete appState.activityLog[todayKey];                          // <-- nueva
+function getCompletedRoutineCount(dateKey) {
+  const routineCount = getCompletedRoutineIds(dateKey).length;
+  return routineCount || (appState.completedActivityDates.includes(dateKey) ? 1 : 0);
+}
+
+function toggleRoutineActivity(routineId) {
+  if (!appState.routines.some(routine => routine.id === routineId)) return;
+
+  const todayKey = getLocalDateKey();
+  appState.activityLog = appState.activityLog || {};
+  const completedRoutineIds = getCompletedRoutineIds(todayKey);
+
+  if (completedRoutineIds.includes(routineId)) {
+    const remainingRoutineIds = completedRoutineIds.filter(id => id !== routineId);
+    if (remainingRoutineIds.length) {
+      appState.activityLog[todayKey] = remainingRoutineIds;
+    } else {
+      delete appState.activityLog[todayKey];
+      appState.completedActivityDates = appState.completedActivityDates.filter(date => date !== todayKey);
+    }
     showToast('Rutina de hoy desmarcada');
+  } else {
+    appState.activityLog[todayKey] = [...completedRoutineIds, routineId];
+    if (!appState.completedActivityDates.includes(todayKey)) {
+      appState.completedActivityDates.push(todayKey);
+    }
+    showToast(`¡Rutina completada! ${appState.activityLog[todayKey].length} en total hoy 🔥`);
   }
 
   saveState(appState);
@@ -316,35 +361,52 @@ function parseDateKey(key) {
   return new Date(y, m - 1, d);
 }
 
-// Racha consecutiva actual (si hoy aún no se completa, cuenta desde ayer)
+function isRoutineScheduledOnDate(date) {
+  const day = date.getDay() || 7;
+  return appState.routines.some(routine => routine.days.includes(day));
+}
+
+// Los días sin rutina programada son descanso; un día programado sin completar corta la racha.
 function getCurrentStreak() {
   const dates = new Set(appState.completedActivityDates);
+  if (dates.size === 0) return 0;
+
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
   if (!dates.has(getLocalDateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  const firstLoggedDate = parseDateKey([...dates].sort()[0]);
   let count = 0;
-  while (dates.has(getLocalDateKey(cursor))) {
-    count++;
+  while (cursor >= firstLoggedDate) {
+    if (dates.has(getLocalDateKey(cursor))) {
+      count++;
+    } else if (isRoutineScheduledOnDate(cursor)) {
+      break;
+    }
     cursor.setDate(cursor.getDate() - 1);
   }
   return count;
 }
 
-// Mejor racha consecutiva histórica
+// Mejor racha histórica, ignorando los días de descanso y cortando en rutinas programadas omitidas.
 function getBestStreak() {
-  const days = [...new Set(appState.completedActivityDates)].sort();
-  let best = 0, run = 0, prev = null;
-  days.forEach(key => {
-    const cur = parseDateKey(key);
-    if (prev) {
-      const diff = Math.round((cur - prev) / 86400000);
-      run = diff === 1 ? run + 1 : 1;
-    } else {
-      run = 1;
+  const completedDates = [...new Set(appState.completedActivityDates)].sort();
+  if (completedDates.length === 0) return 0;
+
+  const completedDateSet = new Set(completedDates);
+  const cursor = parseDateKey(completedDates[0]);
+  const lastLoggedDate = parseDateKey(completedDates[completedDates.length - 1]);
+  let best = 0;
+  let run = 0;
+
+  while (cursor <= lastLoggedDate) {
+    if (completedDateSet.has(getLocalDateKey(cursor))) {
+      run++;
+      best = Math.max(best, run);
+    } else if (isRoutineScheduledOnDate(cursor)) {
+      run = 0;
     }
-    best = Math.max(best, run);
-    prev = cur;
-  });
+    cursor.setDate(cursor.getDate() + 1);
+  }
   return best;
 }
 
@@ -358,19 +420,22 @@ function renderWeekRow() {
   monday.setDate(now.getDate() - diffToMonday);
   monday.setHours(0, 0, 0, 0);
   const todayKey = getLocalDateKey(now);
-  const labels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const labels = ['L', 'M', 'Mi', 'J', 'V', 'S', 'D'];
 
   el.innerHTML = labels.map((label, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const key = getLocalDateKey(d);
-    const done = appState.completedActivityDates.includes(key);
+    const count = getCompletedRoutineCount(key);
     const isToday = key === todayKey;
-    let cls = 'w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border transition ';
-    if (done) cls += 'bg-brand-600 text-white border-brand-600';
+    let cls = 'relative w-9 h-10 rounded-xl flex items-center justify-center text-xs font-bold border transition ';
+    if (count) cls += 'bg-brand-600 text-white border-brand-600';
     else if (isToday) cls += 'bg-white text-brand-700 border-2 border-brand-500';
     else cls += 'bg-white text-slate-500 border-slate-200';
-    return `<div class="${cls}">${label}</div>`;
+    const title = count ? `${count} ${count === 1 ? 'rutina completada' : 'rutinas completadas'}` : label;
+    return `<div class="${cls}" title="${title}"><span>${label}</span>${count > 1
+      ? `<span class="absolute -top-1 -right-1 z-10 min-w-4 h-4 px-1 rounded-full bg-brand-100 text-brand-800 border border-brand-200 text-[9px] leading-none flex items-center justify-center">${count}</span>`
+      : ''}</div>`;
   }).join('');
 }
 
@@ -405,13 +470,6 @@ document.querySelectorAll('[data-cal-view]').forEach(btn => {
 });
 setCalendarView('week');
 
-// Selector de rutina del día
-document.getElementById('todayRoutineSelect').addEventListener('change', function (e) {
-  appState.selectedRoutineId = e.target.value;
-  saveState(appState);
-  renderAll();
-});
-
 // Formulario Nueva Rutina
 const newRoutineForm = document.getElementById('newRoutineForm');
 document.getElementById('toggleNewRoutineFormBtn').addEventListener('click', () => {
@@ -428,6 +486,8 @@ newRoutineForm.addEventListener('submit', function (e) {
   const warmup = document.getElementById('routineWarmupInput').value.trim();
   const main = document.getElementById('routineMainInput').value.trim();
   const cooldown = document.getElementById('routineCooldownInput').value.trim();
+  const days = [...newRoutineForm.querySelectorAll('input[name="routineDays"]:checked')]
+    .map(input => Number(input.value));
 
   if (!name || !warmup || !main || !cooldown) return;
 
@@ -436,7 +496,8 @@ newRoutineForm.addEventListener('submit', function (e) {
     name,
     warmup,
     main,
-    cooldown
+    cooldown,
+    days
   };
 
   appState.routines.push(newRut);
@@ -448,6 +509,18 @@ newRoutineForm.addEventListener('submit', function (e) {
   renderAll();
   showToast('Nueva rutina agregada y seleccionada');
 });
+
+function toggleRoutineDay(id, day) {
+  const routine = appState.routines.find(item => item.id === id);
+  if (!routine) return;
+
+  routine.days = Array.isArray(routine.days) ? routine.days : [];
+  routine.days = routine.days.includes(day)
+    ? routine.days.filter(scheduledDay => scheduledDay !== day)
+    : [...routine.days, day].sort((a, b) => a - b);
+  saveState(appState);
+  renderAll();
+}
 
 function deleteRoutine(id) {
   if (appState.routines.length <= 1) {
@@ -689,7 +762,19 @@ function renderAll() {
   const activityDone = isTodayActivityDone();
   const weeklyStreak = getWeeklyStreakCount();
   const monthlyStreak = getMonthlyStreakCount();
-  const selectedRoutine = appState.routines.find(r => r.id === appState.selectedRoutineId) || appState.routines[0];
+  const currentStreak = getCurrentStreak();
+  const todayDay = now.getDay() || 7;
+  const scheduledToday = appState.routines.filter(routine => routine.days.includes(todayDay));
+  const storedSelection = appState.routines.find(r => r.id === appState.selectedRoutineId);
+  const selectedRoutine = scheduledToday.length
+    ? scheduledToday.find(routine => routine.id === storedSelection?.id) || scheduledToday[0]
+    : storedSelection || appState.routines[0];
+  if (selectedRoutine && appState.selectedRoutineId !== selectedRoutine.id) {
+    appState.selectedRoutineId = selectedRoutine.id;
+    saveState(appState);
+  }
+  const completedRoutineIdsToday = getCompletedRoutineIds(getLocalDateKey(now));
+  const completedTodayCount = getCompletedRoutineCount(getLocalDateKey(now));
   const latestHealth = appState.healthRecords[0] || null;
 
   // --- RENDER PESTAÑA RESUMEN ---
@@ -697,11 +782,6 @@ function renderAll() {
   document.getElementById('summaryScoreBadge').textContent = `${dailyScore}%`;
   document.getElementById('heroWaterText').textContent = `${waterToday} / ${WATER_CAP_ML} ml`;
   document.getElementById('heroActivityText').textContent = activityDone ? 'Completada ✓' : 'Pendiente';
-
-  const heroWeeklyEl = document.getElementById('heroWeeklyStreak');
-  const heroMonthlyEl = document.getElementById('heroMonthlyStreak');
-  if (heroWeeklyEl) heroWeeklyEl.textContent = `${weeklyStreak} / 7 días`;
-  if (heroMonthlyEl) heroMonthlyEl.textContent = `${monthlyStreak} días`;
 
   if (dailyScore === 100) {
     document.getElementById('summaryMotivation').textContent = '¡Objetivo del día 100% cumplido! Excelente constancia.';
@@ -718,27 +798,24 @@ function renderAll() {
     ? '¡Meta diaria alcanzada!'
     : `Faltan ${remaining} ml para el tope`;
 
-  document.getElementById('summaryRoutineName').textContent = selectedRoutine ? selectedRoutine.name : 'Sin rutina';
+  document.getElementById('summaryRoutineName').textContent = getActivityRoutineSummary(
+    completedRoutineIdsToday,
+    appState.routines,
+    selectedRoutine
+  );
   const badgeEl = document.getElementById('summaryActivityBadge');
-  const toggleSummaryBtn = document.getElementById('summaryToggleActivityBtn');
 
-  if (activityDone) {
-    badgeEl.textContent = 'Completada ✓';
+  badgeEl.textContent = `${completedTodayCount}/${scheduledToday.length}`;
+  if (completedTodayCount > 0 && completedTodayCount >= scheduledToday.length) {
     badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800';
-    toggleSummaryBtn.textContent = 'Rutina de hoy completada (Tocar para desmarcar)';
-    toggleSummaryBtn.className = 'w-full py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-xs font-bold transition shadow-sm';
-  } else {
-    badgeEl.textContent = 'Pendiente';
+  } else if (scheduledToday.length > 0) {
     badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800';
-    toggleSummaryBtn.textContent = 'Marcar rutina de hoy como completada';
-    toggleSummaryBtn.className = 'w-full py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white text-xs font-semibold transition shadow-sm';
+  } else {
+    badgeEl.className = 'px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
   }
 
+  document.getElementById('summaryCurrentStreak').textContent = currentStreak;
   document.getElementById('summaryWeeklyStreak').textContent = weeklyStreak;
-  document.getElementById('summaryMonthlyStreak').textContent = monthlyStreak;
-  const daysInCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  document.getElementById('summaryMonthDaysTotal').textContent = `/ ${daysInCurrentMonth} días`;
-  document.getElementById('summaryMonthLabel').textContent = now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   if (latestHealth) {
     document.getElementById('summaryLastCheckDate').textContent = `Registrado el ${latestHealth.date}`;
@@ -812,7 +889,7 @@ function renderAll() {
   // --- RENDER PESTAÑA ACTIVIDAD ---
   document.getElementById('actWeeklyCount').textContent = weeklyStreak;
   document.getElementById('actMonthlyCount').textContent = monthlyStreak;
-  document.getElementById('actStreakCurrent').textContent = getCurrentStreak();
+  document.getElementById('actStreakCurrent').textContent = currentStreak;
   document.getElementById('actStreakRecord').textContent = getBestStreak();
   renderWeekRow();
   document.getElementById('calendarMonthTitle').textContent = now.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' });
@@ -832,92 +909,99 @@ function renderAll() {
   }
   for (let d = 1; d <= totalDays; d++) {
     const dKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const done = appState.completedActivityDates.includes(dKey);
+    const count = getCompletedRoutineCount(dKey);
     const isToday = d === todayDateNum;
 
-    let cellClass = 'w-8 h-8 mx-auto rounded-full flex items-center justify-center text-xs font-semibold transition ';
-    if (done) {
+    let cellClass = 'relative w-8 h-9 mx-auto rounded-lg flex items-center justify-center text-xs font-semibold transition ';
+    if (count) {
       cellClass += 'bg-brand-600 text-white font-bold shadow-xs';
     } else if (isToday) {
       cellClass += 'bg-brand-50 text-brand-700 border-2 border-brand-500 font-bold';
     } else {
       cellClass += 'bg-slate-50 text-slate-600';
     }
-    const routineName = done
-      ? (appState.routines.find(r => r.id === (appState.activityLog || {})[dKey])?.name || '')
+    const titleAttr = count
+      ? ` title="${count} ${count === 1 ? 'rutina completada' : 'rutinas completadas'}"`
       : '';
-    const titleAttr = routineName ? ` title="${routineName}"` : '';
-    calHtml += `<div class="${cellClass}"${titleAttr}>${d}</div>`;
+    calHtml += `<div class="${cellClass}"${titleAttr}><span>${d}</span>${count > 1
+      ? `<span class="absolute -top-1 -right-1 z-10 min-w-4 h-4 px-1 rounded-full bg-brand-100 text-brand-800 border border-brand-200 text-[9px] leading-none flex items-center justify-center">${count}</span>`
+      : ''}</div>`;
   }
   calGrid.innerHTML = calHtml;
 
-  // Select de Rutina del Día
-  const selectEl = document.getElementById('todayRoutineSelect');
-  selectEl.innerHTML = appState.routines.map(r => `
-        <option value="${r.id}" ${r.id === selectedRoutine?.id ? 'selected' : ''}>${r.name}</option>
-      `).join('');
+  // Rutinas de hoy y rutinas adicionales
+  document.getElementById('todayScheduledRoutines').textContent = scheduledToday.length
+    ? `${scheduledToday.length} ${scheduledToday.length === 1 ? 'rutina programada' : 'rutinas programadas'} para hoy.`
+    : 'No hay rutinas programadas para hoy.';
 
-  // Vista previa de las 3 fases
-  const previewEl = document.getElementById('selectedRoutinePreview');
-  if (selectedRoutine) {
-    previewEl.innerHTML = `
-          <div class="flex items-start gap-2">
-            <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px] shrink-0">Calentamiento</span>
-            <span class="text-slate-700">${selectedRoutine.warmup}</span>
-          </div>
-          <div class="flex items-start gap-2">
-            <span class="px-2 py-0.5 rounded-md bg-brand-100 text-brand-800 font-bold text-[10px] shrink-0">Ejercicio</span>
-            <span class="text-slate-800 font-medium">${selectedRoutine.main}</span>
-          </div>
-          <div class="flex items-start gap-2">
-            <span class="px-2 py-0.5 rounded-md bg-water-100 text-water-800 font-bold text-[10px] shrink-0">Enfriamiento</span>
-            <span class="text-slate-700">${selectedRoutine.cooldown}</span>
-          </div>
-        `;
-  }
-
-  // Botón principal de completar rutina de hoy
-  const mainBtn = document.getElementById('mainCompleteRoutineBtn');
-  const mainBtnText = document.getElementById('mainCompleteRoutineText');
-  if (activityDone) {
-    mainBtn.className = 'w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2';
-    mainBtnText.textContent = '¡Rutina de Hoy Completada! ✓';
-  } else {
-    mainBtn.className = 'w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2';
-    mainBtnText.textContent = 'Marcar Rutina de Hoy Completada';
-  }
+  const todayRoutinesList = document.getElementById('todayRoutinesList');
+  todayRoutinesList.innerHTML = renderTodayRoutineCards(scheduledToday, completedRoutineIdsToday);
+  const otherRoutines = appState.routines.filter(routine =>
+    !scheduledToday.some(scheduledRoutine => scheduledRoutine.id === routine.id)
+  );
+  const otherRoutinesSection = document.getElementById('otherRoutinesSection');
+  otherRoutinesSection.classList.toggle('hidden', otherRoutines.length === 0);
+  document.getElementById('otherRoutinesCount').textContent = otherRoutines.length;
+  document.getElementById('otherRoutinesList').innerHTML =
+    renderTodayRoutineCards(otherRoutines, completedRoutineIdsToday);
 
   // Lista de rutinas guardadas
   const routinesList = document.getElementById('routinesListContainer');
-  routinesList.innerHTML = appState.routines.map(r => `
-        <div class="p-3.5 rounded-2xl border ${r.id === selectedRoutine?.id ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200/80 bg-slate-50/60'} space-y-2">
-          <div class="flex items-center justify-between gap-2">
-            <h4 class="text-xs font-bold text-slate-900">${r.name}</h4>
-            <div class="flex items-center gap-1.5">
-              ${r.id === selectedRoutine?.id
-      ? '<span class="px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold">Activa hoy</span>'
-      : `<button type="button" onclick="selectRoutine('${r.id}')" class="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[10px] font-semibold text-slate-600 hover:bg-slate-100">Usar hoy</button>`
-    }
-              <button type="button" onclick="deleteRoutine('${r.id}')" title="Eliminar rutina"
-                class="p-1 text-slate-400 hover:text-rose-600 text-xs font-bold">✕</button>
-            </div>
+  const expandedRoutineIds = new Set(
+    [...routinesList.querySelectorAll('details[data-routine-id][open]')].map(details => details.dataset.routineId)
+  );
+  routinesList.innerHTML = appState.routines.map(r => {
+    const isActive = r.id === selectedRoutine?.id;
+    return `
+      <article class="rounded-2xl border ${isActive ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200/80 bg-slate-50/60'} p-3.5 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex min-w-0 items-center gap-2">
+            <h4 class="truncate text-xs font-bold text-slate-900">${r.name}</h4>
           </div>
-          <div class="text-[11px] text-slate-600 space-y-1">
-            <p><strong class="text-amber-700">Calentamiento:</strong> ${r.warmup}</p>
-            <p><strong class="text-brand-700">Ejercicio:</strong> ${r.main}</p>
-            <p><strong class="text-water-700">Enfriamiento:</strong> ${r.cooldown}</p>
+          <div class="flex shrink-0 items-center gap-1">
+            <button type="button" onclick="deleteRoutine('${r.id}')" title="Eliminar rutina"
+              class="p-1 text-slate-400 hover:text-rose-600 text-xs font-bold">✕</button>
           </div>
         </div>
-      `).join('');
+        <div>
+          <div class="flex flex-wrap gap-1">
+            ${WEEK_DAYS.map(day => {
+        const active = r.days.includes(day.value);
+        return `<button type="button" onclick="toggleRoutineDay('${r.id}', ${day.value})"
+                  aria-pressed="${active}" aria-label="${active ? 'Quitar' : 'Programar'} ${day.label} para ${r.name}"
+                  class="px-2 py-1 rounded-lg text-[10px] font-semibold transition ${active
+            ? 'bg-brand-600 text-white'
+            : 'bg-white border border-slate-200 text-slate-500 hover:bg-brand-50'}">${day.label}</button>`;
+      }).join('')}
+          </div>
+        </div>
+        <details data-routine-id="${r.id}" ${expandedRoutineIds.has(r.id) ? 'open' : ''}
+          class="group border-t border-slate-200/70 pt-2">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-semibold text-brand-700">
+            <span>Ver ejercicios</span>
+            <svg class="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+            </svg>
+          </summary>
+          <div class="mt-3 space-y-3">
+          <div>
+            <p class="text-[10px] font-semibold text-amber-700 mb-1">Calentamiento</p>
+            <ul class="list-disc pl-5 space-y-0.5 text-[11px] leading-relaxed text-slate-600">${renderRoutineItems(r.warmup)}</ul>
+          </div>
+          <div>
+            <p class="text-[10px] font-semibold text-brand-700 mb-1">Ejercicio</p>
+            <ul class="list-disc pl-5 space-y-0.5 text-[11px] leading-relaxed text-slate-600">${renderRoutineItems(r.main)}</ul>
+          </div>
+          <div>
+            <p class="text-[10px] font-semibold text-water-700 mb-1">Enfriamiento</p>
+            <ul class="list-disc pl-5 space-y-0.5 text-[11px] leading-relaxed text-slate-600">${renderRoutineItems(r.cooldown)}</ul>
+          </div>
+          </div>
+        </details>
+      </article>`;
+  }).join('');
 
   updateNotificationStatusUI();
-}
-
-function selectRoutine(id) {
-  appState.selectedRoutineId = id;
-  saveState(appState);
-  renderAll();
-  showToast('Rutina seleccionada para hoy');
 }
 
 function applySexFromData() {
@@ -932,6 +1016,82 @@ function showAppVersion(version) {
   const label = `v${version}`;
   document.getElementById('appVersion').textContent = label;
   document.getElementById('appVersionBadge').textContent = label;
+}
+
+function renderRoutineItems(items) {
+  return items.split(',').map(item => item.trim()).filter(Boolean)
+    .map(item => `<li>${item}</li>`).join('');
+}
+
+function getRoutineDurationMinutes(routine) {
+  const match = routine.name.match(/(\d+(?:[.,]\d+)?)\s*(min(?:utos?)?|m|h(?:oras?)?)/i);
+  if (!match) return null;
+  const amount = Number(match[1].replace(',', '.'));
+  return /^h/i.test(match[2]) ? amount * 60 : amount;
+}
+
+function getRoutineDisplayName(routine) {
+  return routine.name
+    .replace(/\s*\(?\s*~?\d+(?:[.,]\d+)?\s*(?:min(?:utos?)?|m|h(?:oras?)?)\s*\)?/i, '')
+    .trim();
+}
+
+function formatRoutineDuration(minutes) {
+  const totalMinutes = Math.round(minutes);
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (!hours) return `${totalMinutes} min`;
+  return remainingMinutes ? `${hours} h ${remainingMinutes} min` : `${hours} h`;
+}
+
+function getActivityRoutineSummary(completedRoutineIds, routines, fallbackRoutine) {
+  const completedRoutines = completedRoutineIds
+    .map(id => routines.find(routine => routine.id === id))
+    .filter(Boolean);
+  if (completedRoutines.length < 2) return fallbackRoutine ? fallbackRoutine.name : 'Sin rutina';
+
+  const durations = completedRoutines.map(getRoutineDurationMinutes);
+  const totalMinutes = durations.reduce((total, duration) => total + (duration || 0), 0);
+  const missingDurations = durations.filter(duration => duration === null).length;
+  const durationSummary = totalMinutes
+    ? `(~${formatRoutineDuration(totalMinutes)}${missingDurations ? `; ${missingDurations} sin estimar` : ''})`
+    : '(tiempo sin estimar)';
+
+  return `${completedRoutines.map(getRoutineDisplayName).join(', ')}: ${durationSummary}`;
+}
+
+function renderTodayRoutineCards(routines, completedRoutineIds) {
+  return routines.map(routine => {
+    const isComplete = completedRoutineIds.includes(routine.id);
+    return `
+      <article class="rounded-2xl border transition-colors ${isComplete ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50/60'} p-3.5 space-y-3">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-bold text-slate-900">${routine.name}</h3>
+          <label class="inline-flex items-center gap-2 shrink-0 cursor-pointer">
+            <input type="checkbox" ${isComplete ? 'checked' : ''}
+              onchange="toggleRoutineActivity('${routine.id}')"
+              aria-label="${isComplete ? 'Desmarcar' : 'Marcar'} ${routine.name} como completada"
+              class="peer sr-only">
+            <span aria-hidden="true"
+              class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-white text-xs font-bold text-white transition peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">${isComplete ? '✓' : ''}</span>
+          </label>
+        </div>
+        <div class="space-y-2 border-t border-slate-200/70 pt-3">
+          <div>
+            <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">Calentamiento</span>
+            <ul class="mt-1.5 list-disc pl-5 space-y-0.5 text-xs leading-relaxed text-slate-700">${renderRoutineItems(routine.warmup)}</ul>
+          </div>
+          <div>
+            <span class="px-2 py-0.5 rounded-md bg-brand-100 text-brand-800 font-bold text-[10px]">Ejercicio</span>
+            <ul class="mt-1.5 list-disc pl-5 space-y-0.5 text-xs leading-relaxed font-medium text-slate-800">${renderRoutineItems(routine.main)}</ul>
+          </div>
+          <div>
+            <span class="px-2 py-0.5 rounded-md bg-water-100 text-water-800 font-bold text-[10px]">Enfriamiento</span>
+            <ul class="mt-1.5 list-disc pl-5 space-y-0.5 text-xs leading-relaxed text-slate-700">${renderRoutineItems(routine.cooldown)}</ul>
+          </div>
+        </div>
+      </article>`;
+  }).join('');
 }
 
 // -----------------------------------------------------------
