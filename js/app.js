@@ -45,6 +45,21 @@ function formatActivityLoggedTime(timestamp) {
     : date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 }
 
+function getActivityDurationSeconds(entry) {
+  if (!entry.startedAt || !entry.finishedAt) return null;
+  const durationMs = Date.parse(entry.finishedAt) - Date.parse(entry.startedAt);
+  return Number.isFinite(durationMs) && durationMs >= 0
+    ? Math.round(durationMs / 1000)
+    : null;
+}
+
+function formatActivityDuration(totalSeconds) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
+}
+
 function buildActivityHistory(activityLog, routines, history = [], seedTimes = new Map()) {
   const existingEntries = new Map();
   (Array.isArray(history) ? history : []).forEach(entry => {
@@ -53,12 +68,13 @@ function buildActivityHistory(activityLog, routines, history = [], seedTimes = n
     }
   });
 
-  return Object.entries(activityLog || {}).flatMap(([date, routineIds]) => {
+  const completedEntries = Object.entries(activityLog || {}).flatMap(([date, routineIds]) => {
     const ids = Array.isArray(routineIds) ? routineIds : routineIds ? [routineIds] : [];
     return ids.map(routineId => {
       const existing = existingEntries.get(`${date}\u0000${routineId}`);
       const routine = routines.find(item => item.id === routineId);
       return {
+        ...existing,
         date,
         routineId,
         routineName: existing?.routineName || routine?.name || 'Rutina eliminada',
@@ -66,6 +82,11 @@ function buildActivityHistory(activityLog, routines, history = [], seedTimes = n
       };
     });
   });
+  const completedKeys = new Set(completedEntries.map(entry => `${entry.date}\u0000${entry.routineId}`));
+  const inProgressEntries = [...existingEntries.values()].filter(entry =>
+    entry.startedAt && !completedKeys.has(`${entry.date}\u0000${entry.routineId}`)
+  );
+  return [...completedEntries, ...inProgressEntries];
 }
 
 function getActivitySeedTimes(activity) {
@@ -401,6 +422,33 @@ function getCompletedRoutineCount(dateKey) {
 }
 
 function recordRoutineCompletion(dateKey, routine) {
+  const existing = (appState.activityHistory || []).find(entry =>
+    entry.date === dateKey && entry.routineId === routine.id
+  );
+  appState.activityHistory = (appState.activityHistory || []).filter(entry =>
+    entry.date !== dateKey || entry.routineId !== routine.id
+  );
+  appState.activityHistory.push({
+    ...existing,
+    date: dateKey,
+    routineId: routine.id,
+    routineName: routine.name,
+    loggedAt: new Date().toISOString()
+  });
+}
+
+function getRoutineActivityEntry(dateKey, routineId) {
+  return (appState.activityHistory || []).find(entry =>
+    entry.date === dateKey && entry.routineId === routineId
+  );
+}
+
+function completeRoutineActivity(dateKey, routine, startedAt, finishedAt) {
+  appState.activityLog = appState.activityLog || {};
+  appState.activityLog[dateKey] = [...new Set([...getCompletedRoutineIds(dateKey), routine.id])];
+  if (!appState.completedActivityDates.includes(dateKey)) {
+    appState.completedActivityDates.push(dateKey);
+  }
   appState.activityHistory = (appState.activityHistory || []).filter(entry =>
     entry.date !== dateKey || entry.routineId !== routine.id
   );
@@ -408,9 +456,118 @@ function recordRoutineCompletion(dateKey, routine) {
     date: dateKey,
     routineId: routine.id,
     routineName: routine.name,
-    loggedAt: new Date().toISOString()
+    startedAt,
+    finishedAt,
+    loggedAt: finishedAt
   });
 }
+
+function startRoutineActivity(routineId, dateKey = getLocalDateKey()) {
+  if (dateKey !== getLocalDateKey() || isFutureDate(dateKey)) {
+    showToast('Solo puedes empezar una rutina en el día de hoy.', 'warn');
+    return;
+  }
+  const routine = appState.routines.find(item => item.id === routineId);
+  if (!routine || getCompletedRoutineIds(dateKey).includes(routineId)) return;
+
+  const existing = getRoutineActivityEntry(dateKey, routineId);
+  if (existing?.startedAt) {
+    showToast('Esta rutina ya fue empezada.', 'warn');
+    return;
+  }
+  appState.activityHistory = (appState.activityHistory || []).filter(entry =>
+    entry.date !== dateKey || entry.routineId !== routineId
+  );
+  appState.activityHistory.push({
+    date: dateKey,
+    routineId,
+    routineName: routine.name,
+    startedAt: new Date().toISOString(),
+    loggedAt: null
+  });
+  saveState(appState);
+  renderAll();
+  showToast('Rutina empezada. ¡Tú puedes!');
+}
+
+function finishRoutineActivity(routineId, dateKey = getLocalDateKey()) {
+  if (dateKey !== getLocalDateKey() || isFutureDate(dateKey)) {
+    showToast('Solo puedes finalizar una rutina en el día de hoy.', 'warn');
+    return;
+  }
+  const routine = appState.routines.find(item => item.id === routineId);
+  const existing = getRoutineActivityEntry(dateKey, routineId);
+  if (!routine || !existing?.startedAt) {
+    showToast('Primero debes empezar la rutina.', 'warn');
+    return;
+  }
+  const finishedAt = new Date().toISOString();
+  if (Date.parse(finishedAt) < Date.parse(existing.startedAt)) {
+    showToast('La hora de fin no puede ser anterior a la hora de inicio.', 'warn');
+    return;
+  }
+  completeRoutineActivity(dateKey, routine, existing.startedAt, finishedAt);
+  saveState(appState);
+  renderAll();
+  showToast('¡Rutina finalizada!');
+}
+
+function getLocalTimeInputValue(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+const routineTimeModal = document.getElementById('routineTimeModal');
+const routineTimeForm = document.getElementById('routineTimeForm');
+let routineTimeEntry = null;
+
+function openRoutineTimeModal(routineId, dateKey) {
+  const routine = appState.routines.find(item => item.id === routineId);
+  if (!routine || isFutureDate(dateKey)) return;
+  const existing = getRoutineActivityEntry(dateKey, routineId);
+  routineTimeEntry = { routineId, dateKey };
+  document.getElementById('routineTimeModalTitle').textContent =
+    dateKey === getLocalDateKey() ? 'Registrar horario' : `Registrar horario · ${formatHealthRecordDate(dateKey)}`;
+  document.getElementById('routineTimeModalDescription').textContent = routine.name;
+  document.getElementById('routineStartTimeInput').value = getLocalTimeInputValue(existing?.startedAt);
+  document.getElementById('routineEndTimeInput').value = getLocalTimeInputValue(existing?.finishedAt);
+  routineTimeModal.showModal();
+}
+
+document.getElementById('closeRoutineTimeModalBtn').addEventListener('click', () => routineTimeModal.close());
+document.getElementById('cancelRoutineTimeModalBtn').addEventListener('click', () => routineTimeModal.close());
+routineTimeModal.addEventListener('close', () => {
+  routineTimeEntry = null;
+  routineTimeForm.reset();
+});
+
+routineTimeForm.addEventListener('submit', event => {
+  event.preventDefault();
+  if (!routineTimeEntry) return;
+  const startTime = document.getElementById('routineStartTimeInput').value;
+  const endTime = document.getElementById('routineEndTimeInput').value;
+  if (!startTime || !endTime || startTime >= endTime) {
+    showToast('La hora de fin debe ser posterior a la hora de inicio.', 'warn');
+    return;
+  }
+
+  const { dateKey, routineId } = routineTimeEntry;
+  const routine = appState.routines.find(item => item.id === routineId);
+  if (!routine) {
+    showToast('No se encontró la rutina seleccionada.', 'warn');
+    return;
+  }
+  const startedAt = new Date(`${dateKey}T${startTime}:00`).toISOString();
+  const finishedAt = new Date(`${dateKey}T${endTime}:00`).toISOString();
+  completeRoutineActivity(dateKey, routine, startedAt, finishedAt);
+  saveState(appState);
+  routineTimeModal.close();
+  renderAll();
+  showToast('¡Rutina registrada con su horario!');
+});
 
 function removeRoutineCompletionFromHistory(dateKey, routineId) {
   appState.activityHistory = (appState.activityHistory || []).filter(entry =>
@@ -617,6 +774,9 @@ const routineFormInlineContainer = document.getElementById('routineFormInlineCon
 const routineFormModalContainer = document.getElementById('routineFormModalContainer');
 const saveRoutineBtn = document.getElementById('saveRoutineBtn');
 const cancelNewRoutineBtn = document.getElementById('cancelNewRoutineBtn');
+const routineEntryTimeInputs = document.getElementById('routineEntryTimeInputs');
+const routineEntryStartTimeInput = document.getElementById('routineEntryStartTimeInput');
+const routineEntryEndTimeInput = document.getElementById('routineEntryEndTimeInput');
 let routineEntryDate = null;
 let editingRoutineId = null;
 
@@ -625,6 +785,12 @@ function configureRoutineForm(isInline, dateKey = null) {
   routineEntryDate = isInline ? dateKey : null;
   routineDaysFieldset.classList.toggle('hidden', isInline);
   routineFormInlineTitle.classList.toggle('hidden', !isInline);
+  routineEntryTimeInputs.classList.toggle('hidden', !isInline);
+  [routineEntryStartTimeInput, routineEntryEndTimeInput].forEach(input => {
+    input.disabled = !isInline;
+    input.required = isInline;
+    if (!isInline) input.value = '';
+  });
   routineEntryDateTitle.textContent = editingRoutineId ? 'Editar Rutina' : 'Agregar Nueva Rutina';
   saveRoutineBtn.textContent = isInline
     ? 'Registrar entrenamiento'
@@ -689,10 +855,16 @@ newRoutineForm.addEventListener('submit', function (e) {
   const main = document.getElementById('routineMainInput').value.trim();
   const cooldown = document.getElementById('routineCooldownInput').value.trim();
   const entryDate = routineEntryDate;
+  const startTime = routineEntryStartTimeInput.value;
+  const endTime = routineEntryEndTimeInput.value;
   const days = [...newRoutineForm.querySelectorAll('input[name="routineDays"]:checked')]
     .map(input => Number(input.value));
 
   if (!name || !warmup || !main || !cooldown) return;
+  if (entryDate && (!startTime || !endTime || startTime >= endTime)) {
+    showToast('La hora de fin debe ser posterior a la hora de inicio.', 'warn');
+    return;
+  }
 
   if (editingRoutineId) {
     const routine = appState.routines.find(item => item.id === editingRoutineId);
@@ -720,12 +892,9 @@ newRoutineForm.addEventListener('submit', function (e) {
 
   appState.routines.push(newRut);
   if (entryDate) {
-    appState.activityLog = appState.activityLog || {};
-    appState.activityLog[entryDate] = [...new Set([...getCompletedRoutineIds(entryDate), newRut.id])];
-    if (!appState.completedActivityDates.includes(entryDate)) {
-      appState.completedActivityDates.push(entryDate);
-    }
-    recordRoutineCompletion(entryDate, newRut);
+    const startedAt = new Date(`${entryDate}T${startTime}:00`).toISOString();
+    const finishedAt = new Date(`${entryDate}T${endTime}:00`).toISOString();
+    completeRoutineActivity(entryDate, newRut, startedAt, finishedAt);
   } else {
     appState.selectedRoutineId = newRut.id;
   }
@@ -1315,22 +1484,32 @@ function renderExerciseHistory() {
   });
 
   const groupedHistory = [...entriesByDate.entries()];
-  const renderHistoryGroups = groups => groups.map(([date, entries]) => `
+  const renderHistoryGroups = groups => groups.map(([date, entries]) => {
+    const durations = entries.map(getActivityDurationSeconds).filter(duration => duration !== null);
+    const durationLabel = durations.length
+      ? `~${formatActivityDuration(durations.reduce((total, duration) => total + duration, 0))}`
+      : 'Duración no registrada';
+    return `
       <article class="p-3 rounded-2xl bg-slate-50 border border-slate-200/70">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-bold text-slate-800">${formatHealthRecordDate(date)}</span>
-          <span class="text-[10px] font-semibold text-slate-500">${entries.length} ${entries.length === 1 ? 'rutina' : 'rutinas'}</span>
+          <span class="text-[10px] font-semibold text-slate-500">${durationLabel}</span>
         </div>
         <div class="mt-2 space-y-1.5">
           ${entries.map(entry => `
             <div class="flex items-start justify-between gap-3 text-[11px]">
               <span class="min-w-0 break-words text-slate-700">${entry.routineName}</span>
-              <span class="shrink-0 text-slate-500">${formatActivityLoggedTime(entry.loggedAt)}</span>
+              <span class="shrink-0 text-right text-slate-500">${entry.startedAt
+        ? `Inicio ${formatActivityLoggedTime(entry.startedAt)} · ${entry.finishedAt
+          ? `Fin ${formatActivityLoggedTime(entry.finishedAt)}`
+          : 'En curso'}`
+        : formatActivityLoggedTime(entry.loggedAt)}</span>
             </div>
           `).join('')}
         </div>
       </article>
-    `).join('');
+    `;
+  }).join('');
 
   const recentHistory = groupedHistory.slice(0, 3);
   const olderHistory = groupedHistory.slice(3);
@@ -1406,23 +1585,50 @@ function renderRoutineItems(items) {
 
 function renderTodayRoutineCards(routines, completedRoutineIds, dateKey = getLocalDateKey()) {
   const dateIsFuture = isFutureDate(dateKey);
+  const dateIsToday = dateKey === getLocalDateKey();
   return routines.map(routine => {
     const isComplete = completedRoutineIds.includes(routine.id);
+    const activityEntry = getRoutineActivityEntry(dateKey, routine.id);
+    const controls = dateIsFuture ? '' : dateIsToday
+      ? isComplete
+        ? `<div class="flex items-center gap-2 shrink-0">
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked
+                onchange="toggleRoutineActivity('${routine.id}', '${dateKey}')"
+                aria-label="Desmarcar ${routine.name} como completada"
+                class="peer sr-only">
+              <span aria-hidden="true"
+                class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-emerald-600 text-xs font-bold text-white transition peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">✓</span>
+            </label>
+            <button type="button" onclick="openRoutineTimeModal('${routine.id}', '${dateKey}')"
+              class="text-[11px] font-semibold text-brand-700 hover:text-brand-900">Editar horario</button>
+          </div>`
+        : activityEntry?.startedAt
+          ? `<div class="flex flex-col items-end gap-1 shrink-0">
+              <span class="text-[10px] font-semibold text-brand-700">Empezada ${formatActivityLoggedTime(activityEntry.startedAt)}</span>
+              <button type="button" onclick="finishRoutineActivity('${routine.id}', '${dateKey}')"
+                class="px-3 py-2 min-h-[40px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition">Finalizar</button>
+            </div>`
+          : `<button type="button" onclick="startRoutineActivity('${routine.id}', '${dateKey}')"
+              class="px-3 py-2 min-h-[40px] rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition shrink-0">Empezar</button>`
+      : `<div class="flex flex-wrap items-center justify-end gap-2 shrink-0">
+          ${isComplete ? '<span class="text-[11px] font-semibold text-emerald-700">Completada</span>' : ''}
+          <button type="button" onclick="openRoutineTimeModal('${routine.id}', '${dateKey}')"
+            class="px-3 py-2 min-h-[40px] rounded-xl ${isComplete
+        ? 'bg-white border border-brand-200 text-brand-700 hover:bg-brand-50'
+        : 'bg-brand-600 hover:bg-brand-700 text-white'} text-xs font-bold transition">${isComplete ? 'Editar horario' : 'Registrar horario'}</button>
+          ${isComplete ? `<button type="button" onclick="toggleRoutineActivity('${routine.id}', '${dateKey}')"
+            class="text-[11px] font-semibold text-slate-500 hover:text-rose-700">Desmarcar</button>` : ''}
+        </div>`;
     return `
       <article class="rounded-2xl border transition-colors ${isComplete ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50/60'} p-3.5 space-y-3">
         <div class="flex items-center justify-between gap-3">
           <h3 class="text-sm font-bold text-slate-900">${routine.name}</h3>
-          ${dateIsFuture ? '' : `
-            <label class="inline-flex items-center gap-2 shrink-0 cursor-pointer">
-              <input type="checkbox" ${isComplete ? 'checked' : ''}
-                onchange="toggleRoutineActivity('${routine.id}', '${dateKey}')"
-                aria-label="${isComplete ? 'Desmarcar' : 'Marcar'} ${routine.name} como completada"
-                class="peer sr-only">
-              <span aria-hidden="true"
-                class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-white text-xs font-bold text-white transition peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">${isComplete ? '✓' : ''}</span>
-            </label>
-          `}
+          ${controls}
         </div>
+        ${isComplete && activityEntry?.startedAt && activityEntry?.finishedAt
+        ? `<p class="text-[11px] font-medium text-emerald-800">Inicio ${formatActivityLoggedTime(activityEntry.startedAt)} · Fin ${formatActivityLoggedTime(activityEntry.finishedAt)}</p>`
+        : ''}
         <div class="space-y-2 border-t border-slate-200/70 pt-3">
           <div>
             <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">Calentamiento</span>
