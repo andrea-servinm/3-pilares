@@ -73,12 +73,15 @@ function buildActivityHistory(activityLog, routines, history = [], seedTimes = n
     return ids.map(routineId => {
       const existing = existingEntries.get(`${date}\u0000${routineId}`);
       const routine = routines.find(item => item.id === routineId);
+      const seedTime = seedTimes.get(`${date}\u0000${routineId}`) || {};
       return {
         ...existing,
         date,
         routineId,
         routineName: existing?.routineName || routine?.name || 'Rutina eliminada',
-        loggedAt: existing?.loggedAt || seedTimes.get(`${date}\u0000${routineId}`) || null
+        loggedAt: existing?.loggedAt || seedTime.loggedAt || null,
+        startedAt: existing?.startedAt || seedTime.startedAt || null,
+        finishedAt: existing?.finishedAt || seedTime.finishedAt || null
       };
     });
   });
@@ -92,8 +95,12 @@ function buildActivityHistory(activityLog, routines, history = [], seedTimes = n
 function getActivitySeedTimes(activity) {
   const seedTimes = new Map();
   (activity.completedDates || []).forEach(entry => {
-    if (typeof entry !== 'object' || !entry.routineId || !entry.completedAt) return;
-    seedTimes.set(`${entry.date}\u0000${entry.routineId}`, entry.completedAt);
+    if (typeof entry !== 'object' || !entry.routineId) return;
+    seedTimes.set(`${entry.date}\u0000${entry.routineId}`, {
+      loggedAt: entry.completedAt || null,
+      startedAt: entry.startedAt || null,
+      finishedAt: entry.finishedAt || (entry.startedAt ? entry.completedAt : null)
+    });
   });
   return seedTimes;
 }
@@ -122,15 +129,23 @@ async function createInitialState(activityData) {
   const activityLog = {};
   const activityHistory = [];
 
-  function logRoutine(date, routineId, completedAt) {
+  function logRoutine(date, routineId, completedAt, startedAt, finishedAt) {
     if (!routineId) return;
     activityLog[date] = [...new Set([...(activityLog[date] || []), routineId])];
     const existing = activityHistory.find(entry => entry.date === date && entry.routineId === routineId);
     if (existing) {
       if (completedAt) existing.loggedAt = completedAt;
+      if (startedAt) existing.startedAt = startedAt;
+      if (finishedAt || (startedAt && completedAt)) existing.finishedAt = finishedAt || completedAt;
       return;
     }
-    activityHistory.push({ date, routineId, loggedAt: completedAt || null });
+    activityHistory.push({
+      date,
+      routineId,
+      loggedAt: completedAt || null,
+      startedAt: startedAt || null,
+      finishedAt: finishedAt || (startedAt ? completedAt : null)
+    });
   }
 
   // a) Relativos: "hace N días" (opcional)
@@ -138,24 +153,28 @@ async function createInitialState(activityData) {
     const daysAgo = typeof entry === 'object' ? entry.daysAgo : entry;
     const routineId = typeof entry === 'object' ? entry.routineId : null;
     const completedAt = typeof entry === 'object' ? entry.completedAt : null;
+    const startedAt = typeof entry === 'object' ? entry.startedAt : null;
+    const finishedAt = typeof entry === 'object' ? entry.finishedAt : null;
     const prev = new Date(today);
     prev.setDate(today.getDate() - daysAgo);
     if (!activity.onlyCurrentMonth || prev.getMonth() === today.getMonth()) {
       const key = getLocalDateKey(prev);
       completedDates.push(key);
-      logRoutine(key, routineId, completedAt);
+      logRoutine(key, routineId, completedAt, startedAt, finishedAt);
     }
   });
 
-  // b) Fechas fijas: "AAAA-MM-DD" o { date, routineId, completedAt }
+  // b) Fechas fijas: "AAAA-MM-DD" o { date, routineId, completedAt, startedAt, finishedAt }
   const currentMonthPrefix = todayKey.slice(0, 7);
   (activity.completedDates || []).forEach(entry => {
     const date = typeof entry === 'object' ? entry.date : entry;
     const routineId = typeof entry === 'object' ? entry.routineId : null;
     const completedAt = typeof entry === 'object' ? entry.completedAt : null;
+    const startedAt = typeof entry === 'object' ? entry.startedAt : null;
+    const finishedAt = typeof entry === 'object' ? entry.finishedAt : null;
     if (activity.onlyCurrentMonth && !date.startsWith(currentMonthPrefix)) return;
     if (!completedDates.includes(date)) completedDates.push(date);
-    logRoutine(date, routineId, completedAt);
+    logRoutine(date, routineId, completedAt, startedAt, finishedAt);
   });
 
   const healthRecords = health.records.map(({ monthsAgo, ...rec }) => {
@@ -1589,17 +1608,18 @@ function renderTodayRoutineCards(routines, completedRoutineIds, dateKey = getLoc
   return routines.map(routine => {
     const isComplete = completedRoutineIds.includes(routine.id);
     const activityEntry = getRoutineActivityEntry(dateKey, routine.id);
+    const completionCheckbox = `<label class="inline-flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" checked
+        onchange="toggleRoutineActivity('${routine.id}', '${dateKey}')"
+        aria-label="Desmarcar ${routine.name} como completada"
+        class="peer sr-only">
+      <span aria-hidden="true"
+        class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-emerald-600 text-xs font-bold text-white transition peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">✓</span>
+    </label>`;
     const controls = dateIsFuture ? '' : dateIsToday
       ? isComplete
         ? `<div class="flex items-center gap-2 shrink-0">
-            <label class="inline-flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked
-                onchange="toggleRoutineActivity('${routine.id}', '${dateKey}')"
-                aria-label="Desmarcar ${routine.name} como completada"
-                class="peer sr-only">
-              <span aria-hidden="true"
-                class="flex h-5 w-5 items-center justify-center rounded border-2 border-emerald-600 bg-emerald-600 text-xs font-bold text-white transition peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-300">✓</span>
-            </label>
+            ${completionCheckbox}
             <button type="button" onclick="openRoutineTimeModal('${routine.id}', '${dateKey}')"
               class="text-[11px] font-semibold text-brand-700 hover:text-brand-900">Editar horario</button>
           </div>`
@@ -1611,15 +1631,14 @@ function renderTodayRoutineCards(routines, completedRoutineIds, dateKey = getLoc
             </div>`
           : `<button type="button" onclick="startRoutineActivity('${routine.id}', '${dateKey}')"
               class="px-3 py-2 min-h-[40px] rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition shrink-0">Empezar</button>`
-      : `<div class="flex flex-wrap items-center justify-end gap-2 shrink-0">
-          ${isComplete ? '<span class="text-[11px] font-semibold text-emerald-700">Completada</span>' : ''}
-          <button type="button" onclick="openRoutineTimeModal('${routine.id}', '${dateKey}')"
-            class="px-3 py-2 min-h-[40px] rounded-xl ${isComplete
-        ? 'bg-white border border-brand-200 text-brand-700 hover:bg-brand-50'
-        : 'bg-brand-600 hover:bg-brand-700 text-white'} text-xs font-bold transition">${isComplete ? 'Editar horario' : 'Registrar horario'}</button>
-          ${isComplete ? `<button type="button" onclick="toggleRoutineActivity('${routine.id}', '${dateKey}')"
-            class="text-[11px] font-semibold text-slate-500 hover:text-rose-700">Desmarcar</button>` : ''}
-        </div>`;
+      : isComplete
+        ? `<div class="flex flex-wrap items-center justify-end gap-2 shrink-0">
+            ${completionCheckbox}
+            <button type="button" onclick="openRoutineTimeModal('${routine.id}', '${dateKey}')"
+              class="text-[11px] font-semibold text-brand-700 hover:text-brand-900">Editar horario</button>
+          </div>`
+        : `<button type="button" onclick="openRoutineTimeModal('${routine.id}', '${dateKey}')"
+            class="px-3 py-2 min-h-[40px] rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition shrink-0">Registrar horario</button>`;
     return `
       <article class="rounded-2xl border transition-colors ${isComplete ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50/60'} p-3.5 space-y-3">
         <div class="flex items-center justify-between gap-3">
