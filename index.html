@@ -546,10 +546,16 @@
               <p id="todayScheduledRoutines" class="text-[11px] text-slate-500" aria-live="polite"></p>
               <div id="noScheduledRoutineMessage" class="hidden rounded-2xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
                 <p id="noScheduledRoutineText" class="text-xs leading-relaxed text-slate-600">Descanso. Si entrenaste igual, registra tu entrenamiento y el día se marcará como completo.</p>
-                <div id="routineFormInlineContainer" class="pt-1"></div>
               </div>
               <div id="todayRoutinesList" class="space-y-3">
                 <!-- Rutinas del día seleccionado generadas por JS -->
+              </div>
+              <div id="routineEntrySection" class="hidden rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+                <button id="addExerciseBtn" type="button"
+                  class="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-brand-50 px-3.5 py-2 text-xs font-bold text-brand-700 transition hover:bg-brand-100 border border-brand-200">
+                  + Agregar ejercicio
+                </button>
+                <div id="routineFormInlineContainer" class="hidden pt-1"></div>
               </div>
               <details id="otherRoutinesSection" class="group hidden rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
                 <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-700">
@@ -624,7 +630,7 @@
                           style="resize: vertical"
                           class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
                       </div>
-                      <div id="routineEntryTimeInputs" class="hidden grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div id="routineEntryTimeInputs" class="hidden grid min-w-0 grid-cols-2 gap-3">
                         <div class="min-w-0">
                           <label for="routineEntryStartTimeInput" class="block text-xs font-semibold text-slate-700 mb-1">Hora de inicio</label>
                           <input id="routineEntryStartTimeInput" type="time" disabled
@@ -667,7 +673,7 @@
                     <button type="button" id="closeRoutineTimeModalBtn" aria-label="Cerrar"
                       class="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">✕</button>
                   </div>
-                  <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div class="grid min-w-0 grid-cols-2 gap-3">
                     <div class="min-w-0">
                       <label for="routineStartTimeInput" class="block text-xs font-semibold text-slate-700 mb-1">Hora de inicio</label>
                       <input id="routineStartTimeInput" type="time" required

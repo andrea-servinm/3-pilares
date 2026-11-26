@@ -757,6 +757,8 @@ function handleCalendarDateClick(event) {
   if (!button) return;
   if (routineEntryDate && routineEntryDate !== button.dataset.calendarDate) {
     newRoutineForm.reset();
+    isAdditionalExerciseFormOpen = false;
+    isAdditionalExerciseFormInModal = false;
   }
   selectedCalendarDate = button.dataset.calendarDate;
   renderAll();
@@ -790,6 +792,8 @@ const routineDaysFieldset = document.getElementById('routineDaysFieldset');
 const routineEntryDateTitle = document.getElementById('newRoutineTitle');
 const routineFormInlineTitle = document.getElementById('routineFormInlineTitle');
 const routineFormInlineContainer = document.getElementById('routineFormInlineContainer');
+const routineEntrySection = document.getElementById('routineEntrySection');
+const addExerciseBtn = document.getElementById('addExerciseBtn');
 const routineFormModalContainer = document.getElementById('routineFormModalContainer');
 const saveRoutineBtn = document.getElementById('saveRoutineBtn');
 const cancelNewRoutineBtn = document.getElementById('cancelNewRoutineBtn');
@@ -798,8 +802,10 @@ const routineEntryStartTimeInput = document.getElementById('routineEntryStartTim
 const routineEntryEndTimeInput = document.getElementById('routineEntryEndTimeInput');
 let routineEntryDate = null;
 let editingRoutineId = null;
+let isAdditionalExerciseFormOpen = false;
+let isAdditionalExerciseFormInModal = false;
 
-function configureRoutineForm(isInline, dateKey = null) {
+function configureRoutineForm(isInline, dateKey = null, useModalContainer = false) {
   if (isInline) editingRoutineId = null;
   routineEntryDate = isInline ? dateKey : null;
   routineDaysFieldset.classList.toggle('hidden', isInline);
@@ -810,18 +816,29 @@ function configureRoutineForm(isInline, dateKey = null) {
     input.required = isInline;
     if (!isInline) input.value = '';
   });
-  routineEntryDateTitle.textContent = editingRoutineId ? 'Editar Rutina' : 'Agregar Nueva Rutina';
+  routineEntryDateTitle.textContent = editingRoutineId
+    ? 'Editar Rutina'
+    : isInline ? 'Agregar ejercicio' : 'Agregar Nueva Rutina';
   saveRoutineBtn.textContent = isInline
     ? 'Registrar entrenamiento'
     : editingRoutineId ? 'Guardar cambios' : 'Guardar Rutina';
-  cancelNewRoutineBtn.textContent = isInline ? 'Limpiar' : 'Cancelar';
-  const container = isInline ? routineFormInlineContainer : routineFormModalContainer;
+  cancelNewRoutineBtn.textContent = isInline && !useModalContainer ? 'Limpiar' : 'Cancelar';
+  const container = useModalContainer || !isInline
+    ? routineFormModalContainer
+    : routineFormInlineContainer;
   if (newRoutineForm.parentElement !== container) container.append(newRoutineForm);
+}
+
+function hasProgrammedRoutineOnDate(dateKey) {
+  const weekday = parseDateKey(dateKey).getDay() || 7;
+  return appState.routines.some(routine => (routine.days || []).includes(weekday));
 }
 
 function openNewRoutineModal() {
   editingRoutineId = null;
   newRoutineForm.reset();
+  isAdditionalExerciseFormOpen = false;
+  isAdditionalExerciseFormInModal = false;
   configureRoutineForm(false);
   newRoutineModal.showModal();
 }
@@ -830,6 +847,8 @@ function openEditRoutineModal(id) {
   const routine = appState.routines.find(item => item.id === id);
   if (!routine) return;
 
+  isAdditionalExerciseFormOpen = false;
+  isAdditionalExerciseFormInModal = false;
   editingRoutineId = id;
   configureRoutineForm(false);
   document.getElementById('routineNameInput').value = routine.name;
@@ -844,13 +863,31 @@ function openEditRoutineModal(id) {
 }
 
 document.getElementById('toggleNewRoutineFormBtn').addEventListener('click', () => openNewRoutineModal());
+addExerciseBtn.addEventListener('click', () => {
+  if (isFutureDate(selectedCalendarDate)) return;
+  newRoutineForm.reset();
+  isAdditionalExerciseFormOpen = true;
+  isAdditionalExerciseFormInModal = true;
+  configureRoutineForm(true, selectedCalendarDate, true);
+  newRoutineModal.showModal();
+});
 const closeNewRoutineModal = () => {
   newRoutineModal.close();
 };
 document.getElementById('closeNewRoutineModalBtn').addEventListener('click', closeNewRoutineModal);
 cancelNewRoutineBtn.addEventListener('click', () => {
   if (routineEntryDate) {
+    if (newRoutineModal.open) {
+      newRoutineModal.close();
+      return;
+    }
     newRoutineForm.reset();
+    if (hasProgrammedRoutineOnDate(routineEntryDate)) {
+      isAdditionalExerciseFormOpen = false;
+      isAdditionalExerciseFormInModal = false;
+      routineEntryDate = null;
+      renderAll();
+    }
     return;
   }
   closeNewRoutineModal();
@@ -859,6 +896,8 @@ newRoutineModal.addEventListener('close', () => {
   newRoutineForm.reset();
   routineEntryDate = null;
   editingRoutineId = null;
+  isAdditionalExerciseFormOpen = false;
+  isAdditionalExerciseFormInModal = false;
   if (appState) renderAll();
 });
 
@@ -919,9 +958,14 @@ newRoutineForm.addEventListener('submit', function (e) {
   }
   saveState(appState);
 
-  if (entryDate) newRoutineForm.reset();
-  else newRoutineModal.close();
-  renderAll();
+  if (entryDate) {
+    newRoutineForm.reset();
+    isAdditionalExerciseFormOpen = false;
+    isAdditionalExerciseFormInModal = false;
+    routineEntryDate = null;
+  }
+  if (newRoutineModal.open) newRoutineModal.close();
+  else renderAll();
   showToast(entryDate ? 'Entrenamiento registrado para ese día' : 'Nueva rutina agregada y seleccionada');
 });
 
@@ -1392,6 +1436,7 @@ function renderAll() {
     ...scheduledSelectedDate,
     ...oneTimeSelectedDate
   ];
+  const hasScheduledRoutines = scheduledSelectedDate.length > 0;
 
   const selectedDateLabel = selectedDateIsToday ? 'Hoy' : formatDisplayDate(selectedDate);
   document.getElementById('selectedRoutineDateLabel').textContent =
@@ -1405,8 +1450,21 @@ function renderAll() {
   document.getElementById('noScheduledRoutineText').textContent = selectedDateIsFuture
     ? 'No puedes registrar actividad en una fecha futura.'
     : 'Descanso. Si entrenaste igual, registra tu entrenamiento y el día se marcará como completo.';
-  document.getElementById('noScheduledRoutineMessage').classList.toggle('hidden', scheduledSelectedDate.length > 0);
-  configureRoutineForm(scheduledSelectedDate.length === 0 && !selectedDateIsFuture, selectedCalendarDate);
+  document.getElementById('noScheduledRoutineMessage').classList.toggle('hidden', hasScheduledRoutines);
+  const showAdditionalExerciseModal = !selectedDateIsFuture &&
+    hasScheduledRoutines &&
+    isAdditionalExerciseFormOpen &&
+    isAdditionalExerciseFormInModal &&
+    routineEntryDate === selectedCalendarDate;
+  const showInlineRoutineForm = !selectedDateIsFuture && !hasScheduledRoutines;
+  routineEntrySection.classList.toggle('hidden', selectedDateIsFuture);
+  addExerciseBtn.classList.toggle('hidden', !hasScheduledRoutines || selectedDateIsFuture || showAdditionalExerciseModal);
+  routineFormInlineContainer.classList.toggle('hidden', !showInlineRoutineForm);
+  configureRoutineForm(
+    showInlineRoutineForm || showAdditionalExerciseModal,
+    selectedCalendarDate,
+    showAdditionalExerciseModal
+  );
 
   const todayRoutinesList = document.getElementById('todayRoutinesList');
   todayRoutinesList.innerHTML = renderTodayRoutineCards(
